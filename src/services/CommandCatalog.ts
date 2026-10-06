@@ -8,6 +8,8 @@ export type StatusCommand = {
     confirm?: boolean;
     confirmMessage?: string;
     destructive?: boolean;
+    // Pede a senha do app antes de executar.
+    requiresPassword?: boolean;
 };
 
 export type ParamCommand = {
@@ -29,6 +31,7 @@ export const STATUS_COMMANDS: StatusCommand[] = [
         build: () => TrackerCommands.cutRelay(),
         confirm: true,
         confirmMessage: 'Isso vai cortar óleo/energia do veículo. Continuar?',
+        requiresPassword: true,
     },
     { id: 'apnGet', label: 'Consultar APN', build: () => TrackerCommands.getApn() },
     { id: 'serverGet', label: 'Consultar Servidor', build: () => TrackerCommands.getServer() },
@@ -83,8 +86,8 @@ export const PARAM_COMMANDS: ParamCommand[] = [
         label: 'Configurar APN',
         fields: [
             { key: 'apn', label: 'APN', placeholder: 'ex: cmnet' },
-            { key: 'user', label: 'Usuário (opcional)', placeholder: '' },
-            { key: 'pass', label: 'Senha (opcional)', placeholder: '' },
+            { key: 'user', label: 'Usuário', placeholder: '', optional: true },
+            { key: 'pass', label: 'Senha', placeholder: '', optional: true },
         ],
         build: (v) => TrackerCommands.setApn(v.apn, v.user, v.pass),
     },
@@ -130,7 +133,7 @@ export const PARAM_COMMANDS: ParamCommand[] = [
         fields: [
             { key: 'direction', label: 'Direção (E ou W)', placeholder: 'E' },
             { key: 'hours', label: 'Horas (0-12)', placeholder: 'ex: 3', keyboardType: 'numeric' },
-            { key: 'halfZone', label: 'Meio-fuso (0/15/30/45)', placeholder: '0', keyboardType: 'numeric' },
+            { key: 'halfZone', label: 'Meio-fuso (0/15/30/45)', placeholder: '0', keyboardType: 'numeric', optional: true },
         ],
         build: (v) => TrackerCommands.setTimezone(v.direction.toUpperCase(), v.hours, v.halfZone || '0'),
     },

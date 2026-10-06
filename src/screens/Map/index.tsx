@@ -57,6 +57,11 @@ import {
 import {
     checkRealtimeAvailability,
 } from '../../services/TrackerApiService';
+
+import {
+    isIgnoringBatteryOptimizations,
+    requestIgnoreBatteryOptimizations,
+} from '../../services/VigilanteBackground';
 import { useTrackerSelection } from '../../contexts/TrackerSelectionContext';
 
 import type {
@@ -90,6 +95,20 @@ function formatDistanceKm(value: number) {
     return `${safeValue.toFixed(3).replace(/\.?0+$/, '')} km`;
 }
 
+function isSameTracker(
+    a: Tracker | null | undefined,
+    b: Tracker | null | undefined
+) {
+    return (
+        !!a &&
+        !!b &&
+        a.id === b.id &&
+        a.name === b.name &&
+        a.phone === b.phone &&
+        a.imei === b.imei
+    );
+}
+
 export default function MapScreen() {
     const { colors, isDark } = useTheme();
 
@@ -98,7 +117,6 @@ export default function MapScreen() {
     // ============================================================
 
     const {
-        selectedTrackerId,
         setSelectedTrackerId,
         resolveSelectedTracker,
     } = useTrackerSelection();
@@ -190,6 +208,35 @@ export default function MapScreen() {
         useState<TrackerLocation | null>(
             null
         );
+
+    // De qual rastreador é a localização exibida. Evita mostrar a
+    // posição de um rastreador como se fosse de outro, e evita que o
+    // cache local sobrescreva uma posição mais nova (Tempo Real,
+    // histórico, SMS).
+    const locationOwnerRef =
+        useRef<string | null>(null);
+
+    const showLocation =
+        useCallback(
+            (
+                next: TrackerLocation | null,
+                ownerId: string | null
+            ) => {
+                locationOwnerRef.current =
+                    next ? ownerId : null;
+
+                setLocation(next);
+            },
+            []
+        );
+
+    // Pedido de localização por SMS vindo da tela SMS (botão
+    // "Localização"), executado assim que o rastreador estiver
+    // selecionado.
+    const [
+        autoRequestTrackerId,
+        setAutoRequestTrackerId,
+    ] = useState<string | null>(null);
 
     // ============================================================
     // HISTÓRICO
@@ -284,40 +331,44 @@ export default function MapScreen() {
                         route.params
                             ?.trackerId;
 
-                    const preferredTracker =
+                    const autoRequest =
+                        route.params
+                            ?.autoRequestLocation === true;
+
+                    const requestedTracker =
                         requestedId
                             ? list.find(tracker => tracker.id === requestedId)
-                            : resolveSelectedTracker(list);
+                            : undefined;
 
-                    if (preferredTracker) {
-                        setSelectedTrackerId(preferredTracker.id);
-                        setSelectedTracker(preferredTracker);
-                        return;
+                    // Consome os parâmetros de navegação. Se ficassem
+                    // nos params, toda vez que a aba Mapa ganhasse foco
+                    // o app voltaria pra esse rastreador — desfazendo a
+                    // escolha feita no dropdown e desligando o Tempo Real.
+                    if (requestedId || autoRequest) {
+                        navigation.setParams({
+                            trackerId: undefined,
+                            autoRequestLocation: undefined,
+                        });
                     }
 
+                    const nextTracker =
+                        requestedTracker ??
+                        resolveSelectedTracker(list);
+
                     setSelectedTracker(
-                        previous => {
-                            if (!previous) {
-                                return (
-                                    list[0] ??
-                                    null
-                                );
-                            }
-
-                            const stillExists =
-                                list.find(
-                                    tracker =>
-                                        tracker.id ===
-                                        previous.id
-                                );
-
-                            return (
-                                stillExists ??
-                                list[0] ??
-                                null
-                            );
-                        }
+                        previous =>
+                            isSameTracker(previous, nextTracker)
+                                ? previous
+                                : nextTracker ?? null
                     );
+
+                    if (nextTracker) {
+                        setSelectedTrackerId(nextTracker.id);
+
+                        if (autoRequest && requestedTracker) {
+                            setAutoRequestTrackerId(nextTracker.id);
+                        }
+                    }
                 } catch (error) {
                     console.warn(
                         'Erro ao carregar rastreadores:',
@@ -329,6 +380,10 @@ export default function MapScreen() {
             },
             [
                 route.params?.trackerId,
+                route.params?.autoRequestLocation,
+                navigation,
+                resolveSelectedTracker,
+                setSelectedTrackerId,
             ]
         );
 
@@ -388,59 +443,108 @@ export default function MapScreen() {
     // TROCA DE TRACKER
     // ============================================================
 
+    const selectedTrackerId =
+        selectedTracker?.id ?? null;
+
     useEffect(() => {
-        if (!selectedTracker) {
+        if (!selectedTrackerId) {
             return;
         }
 
-        setSelectedTrackerId(selectedTracker.id);
+        setSelectedTrackerId(selectedTrackerId);
 
-        if (isHistoricalRoute) {
+        // A tela já está mostrando uma posição desse rastreador
+        // (Tempo Real, histórico, SMS) — nada a fazer.
+        if (
+            locationOwnerRef.current ===
+            selectedTrackerId
+        ) {
             return;
         }
+
+        // Trocou de rastreador: sai da rota histórica do anterior e
+        // mostra a última posição conhecida deste — ou nenhuma, se
+        // não houver (antes ficava a posição do rastreador anterior).
+        setHistoryRoutePoints([]);
+        setIsHistoricalRoute(false);
+        setFollowEnabled(true);
+
+        let cancelled = false;
 
         void getLastLocation(
-            selectedTracker.id
+            selectedTrackerId
         ).then(last => {
-            if (last) {
-                setLocation(last);
+            if (
+                cancelled ||
+                locationOwnerRef.current ===
+                selectedTrackerId
+            ) {
+                return;
             }
+
+            showLocation(
+                last,
+                selectedTrackerId
+            );
         });
 
-        // --------------------------------------------------------
-        // TEMPO REAL
-        // --------------------------------------------------------
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        selectedTrackerId,
+        setSelectedTrackerId,
+        showLocation,
+    ]);
+
+    // Tempo Real / Vigilante de outro rastreador são desligados ao
+    // trocar de rastreador.
+    useEffect(() => {
+        if (!selectedTrackerId) {
+            return;
+        }
 
         if (
             globalRealTimeEnabled &&
-            selectedTracker.id !==
+            selectedTrackerId !==
             activeTrackerId
         ) {
             stopRealTime();
         }
 
-        // --------------------------------------------------------
-        // VIGILANTE
-        // --------------------------------------------------------
-
         if (
             globalVigilanteEnabled &&
-            selectedTracker.id !==
+            selectedTrackerId !==
             activeVigilanteTrackerId
         ) {
             stopVigilante();
         }
-
-        setFollowEnabled(true);
     }, [
-        selectedTracker,
-        isHistoricalRoute,
+        selectedTrackerId,
         globalRealTimeEnabled,
         activeTrackerId,
         globalVigilanteEnabled,
         activeVigilanteTrackerId,
         stopRealTime,
         stopVigilante,
+    ]);
+
+    // Localização por SMS pedida pela tela SMS.
+    useEffect(() => {
+        if (
+            !autoRequestTrackerId ||
+            selectedTrackerId !==
+            autoRequestTrackerId
+        ) {
+            return;
+        }
+
+        setAutoRequestTrackerId(null);
+
+        void handleRequestSmsLocation();
+    }, [
+        autoRequestTrackerId,
+        selectedTrackerId,
     ]);
 
     // ============================================================
@@ -458,8 +562,9 @@ export default function MapScreen() {
             selectedTracker?.id ===
             activeTrackerId
         ) {
-            setLocation(
-                latestLocation
+            showLocation(
+                latestLocation,
+                activeTrackerId
             );
         }
     }, [
@@ -468,6 +573,7 @@ export default function MapScreen() {
         activeTrackerId,
         selectedTracker,
         isHistoricalRoute,
+        showLocation,
     ]);
 
     // ============================================================
@@ -495,8 +601,11 @@ export default function MapScreen() {
 
         setFollowEnabled(true);
 
-        setLocation(
-            historyLocation
+        showLocation(
+            historyLocation,
+            route.params?.trackerId ??
+            selectedTracker?.id ??
+            null
         );
 
         navigation.setParams({
@@ -508,6 +617,7 @@ export default function MapScreen() {
         navigation,
         stopRealTime,
         stopVigilante,
+        showLocation,
     ]);
 
     // ============================================================
@@ -561,7 +671,12 @@ export default function MapScreen() {
                 ];
 
             if (lastPoint) {
-                setLocation(lastPoint);
+                showLocation(
+                    lastPoint,
+                    route.params?.trackerId ??
+                    selectedTracker?.id ??
+                    null
+                );
             }
 
             // ========================================================
@@ -585,6 +700,7 @@ export default function MapScreen() {
             navigation,
             stopRealTime,
             stopVigilante,
+            showLocation,
         ])
     );
 
@@ -657,7 +773,10 @@ export default function MapScreen() {
 
         setFollowEnabled(true);
 
-        setLocation(last);
+        showLocation(
+            last,
+            selectedTracker.id
+        );
     }
 
     // ============================================================
@@ -719,8 +838,9 @@ export default function MapScreen() {
 
             setFollowEnabled(true);
 
-            setLocation(
-                newLocation
+            showLocation(
+                newLocation,
+                selectedTracker.id
             );
 
             await saveLastLocation(
@@ -769,12 +889,7 @@ export default function MapScreen() {
         if (!value) {
             stopRealTime();
 
-            setRealTimeEnabled(true);
-
-            // Real Time inicia com o mapa livre.
-            // O acompanhamento só começa quando o usuário
-            // pressionar o botão de recentralizar.
-            setFollowEnabled(false);
+            setRealTimeEnabled(false);
 
             return;
         }
@@ -860,8 +975,9 @@ export default function MapScreen() {
                 'available' &&
                 result.location
             ) {
-                setLocation(
-                    result.location
+                showLocation(
+                    result.location,
+                    selectedTracker.id
                 );
 
                 await saveLastLocation(
@@ -1010,6 +1126,29 @@ export default function MapScreen() {
              * localmente.
              */
             setFollowEnabled(true);
+
+            // Com a otimização de bateria ligada, alguns aparelhos
+            // ainda pausam o app mesmo com o serviço em primeiro
+            // plano — pede a exceção (uma vez; depois fica salva).
+            if (!isIgnoringBatteryOptimizations()) {
+                Alert.alert(
+                    '🛡️ Vigilante em segundo plano',
+                    'Para o Modo Vigilante continuar avisando com a tela bloqueada, permita que o app não seja restringido pela economia de bateria.',
+                    [
+                        { text: 'Agora não', style: 'cancel' },
+                        {
+                            text: 'Permitir',
+                            onPress: () => {
+                                try {
+                                    requestIgnoreBatteryOptimizations();
+                                } catch (error) {
+                                    console.warn('Erro ao abrir ajuste de bateria:', error);
+                                }
+                            },
+                        },
+                    ]
+                );
+            }
         } catch (error) {
             console.warn(
                 'Erro ao iniciar Modo Vigilante:',
@@ -1049,10 +1188,20 @@ export default function MapScreen() {
     // ROTA EXIBIDA
     // ============================================================
 
+    // Rota histórica, ou o trajeto do Tempo Real do rastreador
+    // exibido (desenhado sem prender a câmera).
+    const showingLiveTrail =
+        !isHistoricalRoute &&
+        realTimeEnabled &&
+        selectedTracker?.id ===
+        activeTrackerId;
+
     const displayedRoutePoints =
         isHistoricalRoute
             ? historyRoutePoints
-            : [];
+            : showingLiveTrail
+                ? routePoints
+                : [];
 
     // ============================================================
     // RENDER
@@ -1082,6 +1231,9 @@ export default function MapScreen() {
                     location={location}
                     routePoints={
                         displayedRoutePoints
+                    }
+                    fitRoute={
+                        isHistoricalRoute
                     }
                     followEnabled={
                         followEnabled

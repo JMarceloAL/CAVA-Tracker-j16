@@ -1,0 +1,12 @@
+{
+  // Os módulos nativos locais (modules/*/android) só compilam dentro do
+  // projeto android/ gerado pelo Expo — sozinhos, o Gradle não encontra
+  // o plugin com.android.library. Não importa eles como projetos Java.
+  "java.import.exclusions": [
+    "**/node_modules/**",
+    "**/.metadata/**",
+    "**/archetype-resources/**",
+    "**/META-INF/maven/**",
+    "**/modules/*/android/**"
+  ]
+}

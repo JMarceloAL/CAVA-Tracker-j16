@@ -15,6 +15,13 @@ Notifications.setNotificationHandler({
     }),
 });
 
+const VIGILANTE_CHANNEL_ID = 'vigilante';
+
+const VIGILANTE_TRIGGER: Notifications.NotificationTriggerInput =
+    Platform.OS === 'android'
+        ? { channelId: VIGILANTE_CHANNEL_ID }
+        : null;
+
 // ============================================================
 // PERMISSÕES
 // ============================================================
@@ -39,7 +46,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
     // Android
     if (Platform.OS === 'android') {
         await Notifications.setNotificationChannelAsync(
-            'vigilante',
+            VIGILANTE_CHANNEL_ID,
             {
                 name: 'Vigilante',
                 importance: Notifications.AndroidImportance.MAX,
@@ -90,8 +97,9 @@ export async function sendMovementNotification(
             },
         },
 
-        // Envia imediatamente
-        trigger: null,
+        // Envia imediatamente, pelo canal "vigilante" (prioridade
+        // máxima no Android — aparece como pop-up e vibra).
+        trigger: VIGILANTE_TRIGGER,
     });
 }
 
@@ -121,7 +129,47 @@ export async function sendAlarmNotification(
             },
         },
 
-        // Envia imediatamente
-        trigger: null,
+        // Envia imediatamente, pelo canal "vigilante" (prioridade
+        // máxima no Android — aparece como pop-up e vibra).
+        trigger: VIGILANTE_TRIGGER,
+    });
+}
+// ============================================================
+// EVENTO DO SERVIDOR (alertas configuráveis, cercas, alarmes)
+// ============================================================
+
+export async function sendTrackerEventNotification(
+    trackerName: string,
+    event: {
+        id: string;
+        type: string;
+        title: string;
+        message: string;
+        createdAt: string;
+    }
+): Promise<void> {
+    const dataHora = new Date(event.createdAt).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+
+    await Notifications.scheduleNotificationAsync({
+        content: {
+            title: `🚨 ${event.title}`,
+            body:
+                `${trackerName}\n` +
+                `${event.message}\n` +
+                `Data e hora: ${dataHora}`,
+            data: {
+                tipo: 'EVENTO',
+                eventId: event.id,
+                eventType: event.type,
+                trackerName,
+            },
+        },
+
+        trigger: VIGILANTE_TRIGGER,
     });
 }

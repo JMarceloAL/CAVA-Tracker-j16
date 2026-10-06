@@ -9,11 +9,16 @@ import { parseTrackerReply } from './Trackerparse';
 
 type ParsedTrackerReply = ReturnType<typeof parseTrackerReply>;
 
+type ReplyMatcher = (parsed: ParsedTrackerReply) => boolean;
+
 type PendingResolver = {
     resolve: (parsed: ParsedTrackerReply) => void;
     reject: (error: Error) => void;
     timer: ReturnType<typeof setTimeout>;
+    accepts: ReplyMatcher;
 };
+
+const acceptAnyReply: ReplyMatcher = () => true;
 
 type TrackerServiceOptions = {
     timeoutMs?: number;
@@ -122,23 +127,38 @@ export class TrackerService {
             return;
         }
 
-        const pending = this.pendingResolvers.shift();
+        // Entrega para a solicitação mais antiga que aceita esse tipo
+        // de resposta. Um SMS espontâneo do rastreador (ex: alarme)
+        // não é "consumido" por um comando que espera outra coisa.
+        const pendingIndex = this.pendingResolvers.findIndex(
+            item => item.accepts(parsed)
+        );
 
-        if (!pending) {
+        if (pendingIndex === -1) {
             console.log(
-                '⏭️ Nenhuma solicitação aguardando resposta.'
+                '⏭️ Nenhuma solicitação aguardando esse tipo de resposta.'
             );
 
             return;
         }
+
+        const [pending] = this.pendingResolvers.splice(
+            pendingIndex,
+            1
+        );
 
         clearTimeout(pending.timer);
 
         pending.resolve(parsed);
     }
 
+    /**
+     * `accepts` filtra quais respostas valem para esse comando
+     * (padrão: qualquer uma).
+     */
     sendCommand(
-        commandString: string
+        commandString: string,
+        accepts: ReplyMatcher = acceptAnyReply
     ): Promise<ParsedTrackerReply> {
         if (this.destroyed) {
             return Promise.reject(
@@ -168,6 +188,7 @@ export class TrackerService {
                     resolve,
                     reject,
                     timer,
+                    accepts,
                 });
 
                 sendSmsToTracker(
@@ -200,7 +221,8 @@ export class TrackerService {
      */
     async getParams() {
         const reply = await this.sendCommand(
-            TrackerCommands.getParams()
+            TrackerCommands.getParams(),
+            parsed => 'imei' in parsed && !!parsed.imei
         );
 
         if (!reply.imei) {
@@ -219,7 +241,10 @@ export class TrackerService {
      */
     async getLocation() {
         const reply = await this.sendCommand(
-            TrackerCommands.getLocationUrl()
+            TrackerCommands.getLocationUrl(),
+            parsed =>
+                parsed.type === 'location' ||
+                parsed.type === 'noSignal'
         );
 
         if (reply.type === 'noSignal') {
@@ -252,7 +277,8 @@ export class TrackerService {
      */
     async getStatus() {
         const reply = await this.sendCommand(
-            TrackerCommands.getStatus()
+            TrackerCommands.getStatus(),
+            parsed => parsed.type === 'status'
         );
 
         if (reply.type !== 'status') {

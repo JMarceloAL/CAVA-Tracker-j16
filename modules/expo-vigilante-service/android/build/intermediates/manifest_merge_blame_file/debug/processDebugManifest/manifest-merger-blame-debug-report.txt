@@ -1,0 +1,48 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="expo.modules.vigilanteservice" >
+4
+5    <uses-sdk android:minSdkVersion="24" />
+6
+7    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+7-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:2:5-77
+7-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:2:22-74
+8    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+8-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:3:5-89
+8-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:3:22-86
+9    <uses-permission android:name="android.permission.WAKE_LOCK" />
+9-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:4:5-68
+9-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:4:22-65
+10    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+10-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:5:5-77
+10-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:5:22-74
+11    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+11-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:6:5-95
+11-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:6:22-92
+12
+13    <application>
+13-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:8:5-22:19
+14
+15        <!--
+16            specialUse: monitoramento contínuo de um rastreador remoto não
+17            se encaixa nos outros tipos, e "dataSync" é limitado a 6h por
+18            dia no Android 15 (o Vigilante costuma ficar ligado a noite toda).
+19        -->
+20        <service
+20-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:14:9-21:19
+21            android:name="expo.modules.vigilanteservice.VigilanteForegroundService"
+21-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:15:13-84
+22            android:exported="false"
+22-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:16:13-37
+23            android:foregroundServiceType="specialUse" >
+23-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:17:13-55
+24            <property
+24-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:18:13-20:154
+25                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+25-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:19:17-76
+26                android:value="Monitoramento contínuo de rastreador veicular (Modo Vigilante): consulta o servidor e avisa sobre movimento e alarmes." />
+26-->/home/Marcelo/Área de trabalho/Projeto Rastreador/Cavalleta-Tracker-j16/modules/expo-vigilante-service/android/src/main/AndroidManifest.xml:20:17-151
+27        </service>
+28    </application>
+29
+30</manifest>

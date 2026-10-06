@@ -10,6 +10,8 @@ import React, {
 import {
     checkRealtimeAvailability,
     fetchTrackerData,
+    fetchTrackerEvents,
+    type ApiTrackerEvent,
 } from '../services/TrackerApiService';
 
 import type {
@@ -17,9 +19,28 @@ import type {
 } from '../types/Tracker';
 
 import {
-    sendAlarmNotification,
     sendMovementNotification,
+    sendTrackerEventNotification,
 } from '../services/NotificationService';
+
+import {
+    RealtimeSocket,
+    type RealtimeMessage,
+} from '../services/RealtimeSocket';
+
+import {
+    saveLastLocation,
+} from '../services/storage/LastlocationStorage';
+
+import {
+    normalizeServerDate,
+} from '../utils/serverDate';
+
+import {
+    addStopRequestedListener,
+    startVigilanteBackground,
+    stopVigilanteBackground,
+} from '../services/VigilanteBackground';
 
 interface RealTimeContextData {
     // ============================================================
@@ -92,6 +113,19 @@ const POLLING_INTERVAL = 5000;
 const VIGILANTE_POLLING_INTERVAL = 5000;
 
 const MOVEMENT_DISTANCE_METERS = 10;
+
+// O Vigilante usa um raio maior: com o veículo parado, a oscilação
+// normal do GPS passa fácil de 10 m e geraria alerta falso de
+// movimento. 30 m é o mesmo raio que o servidor usa.
+const VIGILANTE_MOVEMENT_DISTANCE_METERS = 30;
+
+// Falhas de rede seguidas toleradas antes de desligar o Tempo Real
+// ou o Vigilante (3 x 5 s = ~15 s sem resposta do servidor).
+const MAX_CONSECUTIVE_FAILURES = 3;
+
+// Com o WebSocket conectado, os dados chegam sozinhos na hora — o
+// polling HTTP vira só uma garantia, a cada 30 s.
+const SOCKET_FALLBACK_POLL_MS = 30 * 1000;
 
 const MOVEMENT_SPEED_KMH = 3;
 
@@ -198,7 +232,7 @@ function resolveVigilanteState(
             }
         );
 
-        moving = moving || distanceKm * 1000 > MOVEMENT_DISTANCE_METERS;
+        moving = moving || distanceKm * 1000 > VIGILANTE_MOVEMENT_DISTANCE_METERS;
     }
 
     const alarmPending =
@@ -269,6 +303,11 @@ export function RealTimeProvider({
     const activeImeiRef =
         useRef<string | null>(null);
 
+    // Id do rastreador do Tempo Real, pra salvar a última posição
+    // no cache local a cada leitura do polling.
+    const activeTrackerIdRef =
+        useRef<string | null>(null);
+
     const pollingRef =
         useRef<ReturnType<typeof setInterval> | null>(
             null
@@ -276,6 +315,15 @@ export function RealTimeProvider({
 
     const checkingRef =
         useRef(false);
+
+    const realTimeFailuresRef =
+        useRef(0);
+
+    const realTimeSocketRef =
+        useRef<RealtimeSocket | null>(null);
+
+    const lastRealTimePollRef =
+        useRef(0);
 
     const previousLocationRef =
         useRef<TrackerLocation | null>(null);
@@ -367,6 +415,56 @@ export function RealTimeProvider({
     );
 
     // ============================================================
+    // WEBSOCKET TEMPO REAL
+    // ============================================================
+
+    const handleRealTimeMessage =
+        useCallback(
+            (message: RealtimeMessage) => {
+                if (message.tipo !== 'LOCATION') {
+                    return;
+                }
+
+                const latitude = Number(message.latitude);
+                const longitude = Number(message.longitude);
+
+                if (
+                    !Number.isFinite(latitude) ||
+                    !Number.isFinite(longitude)
+                ) {
+                    return;
+                }
+
+                const location: TrackerLocation = {
+                    latitude,
+                    longitude,
+                    speed: Number(message.velocidade ?? 0),
+                    satellites:
+                        typeof message.satelites === 'number'
+                            ? message.satelites
+                            : undefined,
+                    lastUpdate:
+                        normalizeServerDate(
+                            typeof message.dataUTC === 'string'
+                                ? message.dataUTC
+                                : undefined
+                        ) ??
+                        new Date().toISOString(),
+                };
+
+                updateLocation(location);
+
+                if (activeTrackerIdRef.current) {
+                    void saveLastLocation(
+                        activeTrackerIdRef.current,
+                        location
+                    );
+                }
+            },
+            [updateLocation]
+        );
+
+    // ============================================================
     // LIMPAR TEMPO REAL
     // ============================================================
 
@@ -380,6 +478,10 @@ export function RealTimeProvider({
                 pollingRef.current =
                     null;
             }
+
+            // Todo caminho que desliga o Tempo Real passa por aqui.
+            realTimeSocketRef.current?.close();
+            realTimeSocketRef.current = null;
         }, []);
 
     const clearRoute =
@@ -413,7 +515,43 @@ export function RealTimeProvider({
                 return;
             }
 
+            if (
+                realTimeSocketRef.current?.isConnected &&
+                Date.now() - lastRealTimePollRef.current <
+                SOCKET_FALLBACK_POLL_MS
+            ) {
+                return;
+            }
+
+            lastRealTimePollRef.current = Date.now();
+
             checkingRef.current = true;
+
+            // Só desliga depois de várias falhas seguidas — uma
+            // oscilação isolada do 4G não derruba o Tempo Real.
+            const registerFailure = () => {
+                realTimeFailuresRef.current += 1;
+
+                if (
+                    realTimeFailuresRef.current <
+                    MAX_CONSECUTIVE_FAILURES
+                ) {
+                    return;
+                }
+
+                clearPolling();
+
+                setRealTimeEnabledState(
+                    false
+                );
+
+                activeImeiRef.current =
+                    null;
+
+                setRealTimeError(
+                    'A conexão com o servidor foi perdida. O Tempo Real foi desligado.'
+                );
+            };
 
             try {
                 const availability =
@@ -425,21 +563,12 @@ export function RealTimeProvider({
                     availability.status ===
                     'no-connection'
                 ) {
-                    clearPolling();
-
-                    setRealTimeEnabledState(
-                        false
-                    );
-
-                    activeImeiRef.current =
-                        null;
-
-                    setRealTimeError(
-                        'A conexão com o servidor foi perdida. O Tempo Real foi desligado.'
-                    );
+                    registerFailure();
 
                     return;
                 }
+
+                realTimeFailuresRef.current = 0;
 
                 if (
                     availability.status ===
@@ -456,6 +585,13 @@ export function RealTimeProvider({
                     updateLocation(
                         availability.location
                     );
+
+                    if (activeTrackerIdRef.current) {
+                        void saveLastLocation(
+                            activeTrackerIdRef.current,
+                            availability.location
+                        );
+                    }
                 }
             } catch (error) {
                 console.warn(
@@ -463,18 +599,7 @@ export function RealTimeProvider({
                     error
                 );
 
-                clearPolling();
-
-                setRealTimeEnabledState(
-                    false
-                );
-
-                activeImeiRef.current =
-                    null;
-
-                setRealTimeError(
-                    'A conexão com o servidor foi perdida. O Tempo Real foi desligado.'
-                );
+                registerFailure();
             } finally {
                 checkingRef.current =
                     false;
@@ -519,6 +644,9 @@ export function RealTimeProvider({
                     setActiveTrackerId(
                         trackerId
                     );
+
+                    activeTrackerIdRef.current =
+                        trackerId;
                 }
 
                 if (trackerName) {
@@ -560,6 +688,11 @@ export function RealTimeProvider({
 
                 activeImeiRef.current =
                     imei;
+
+                activeTrackerIdRef.current =
+                    trackerId;
+
+                realTimeFailuresRef.current = 0;
 
                 clearRoute();
 
@@ -608,6 +741,13 @@ export function RealTimeProvider({
                             void pollLocation();
                         }, POLLING_INTERVAL);
 
+                    // Posição em tempo real pelo WebSocket; o polling
+                    // acima vira garantia enquanto ele estiver conectado.
+                    realTimeSocketRef.current =
+                        new RealtimeSocket(imei, {
+                            onMessage: handleRealTimeMessage,
+                        });
+
                     return true;
                 } catch (error) {
                     console.warn(
@@ -634,6 +774,7 @@ export function RealTimeProvider({
                 clearRoute,
                 pollLocation,
                 updateLocation,
+                handleRealTimeMessage,
             ]
         );
 
@@ -646,6 +787,9 @@ export function RealTimeProvider({
             clearPolling();
 
             activeImeiRef.current =
+                null;
+
+            activeTrackerIdRef.current =
                 null;
 
             previousLocationRef.current =
@@ -703,6 +847,9 @@ export function RealTimeProvider({
     const vigilanteTrackerNameRef =
         useRef('O rastreador');
 
+    const vigilanteTrackerIdRef =
+        useRef<string | null>(null);
+
     const vigilantePollingRef =
         useRef<ReturnType<typeof setInterval> | null>(
             null
@@ -710,6 +857,24 @@ export function RealTimeProvider({
 
     const vigilanteCheckingRef =
         useRef(false);
+
+    const vigilanteFailuresRef =
+        useRef(0);
+
+    const vigilanteSocketRef =
+        useRef<RealtimeSocket | null>(null);
+
+    const lastVigilantePollRef =
+        useRef(0);
+
+    // Eventos (alertas/alarmes do servidor) já notificados, e o
+    // horário do mais recente — evita notificar duas vezes o mesmo
+    // evento (chega pelo WebSocket E pelo polling).
+    const notifiedEventIdsRef =
+        useRef<Set<string>>(new Set());
+
+    const vigilanteEventsSinceRef =
+        useRef<string | null>(null);
 
     const vigilanteMovingRef =
         useRef(false);
@@ -736,7 +901,68 @@ export function RealTimeProvider({
                 vigilantePollingRef.current =
                     null;
             }
+
+            // Todo caminho que desliga o Vigilante passa por aqui.
+            vigilanteSocketRef.current?.close();
+            vigilanteSocketRef.current = null;
         }, []);
+
+    // ============================================================
+    // EVENTOS DO SERVIDOR (alertas e alarmes)
+    // ============================================================
+
+    const notifyVigilanteEvent =
+        useCallback((event: ApiTrackerEvent) => {
+            if (
+                !event?.id ||
+                notifiedEventIdsRef.current.has(event.id)
+            ) {
+                return;
+            }
+
+            notifiedEventIdsRef.current.add(event.id);
+
+            if (
+                !vigilanteEventsSinceRef.current ||
+                event.createdAt > vigilanteEventsSinceRef.current
+            ) {
+                vigilanteEventsSinceRef.current =
+                    event.createdAt;
+            }
+
+            void sendTrackerEventNotification(
+                vigilanteTrackerNameRef.current,
+                event
+            );
+        }, []);
+
+    const handleVigilanteMessage =
+        useCallback(
+            (message: RealtimeMessage) => {
+                if (message.tipo === 'EVENT' && message.event) {
+                    notifyVigilanteEvent(
+                        message.event as ApiTrackerEvent
+                    );
+                    return;
+                }
+
+                // Servidor confirmou início/fim de movimento (rota).
+                if (message.tipo === 'MOVEMENT') {
+                    if (
+                        message.moving === true &&
+                        !vigilanteMovingRef.current
+                    ) {
+                        void sendMovementNotification(
+                            vigilanteTrackerNameRef.current
+                        );
+                    }
+
+                    vigilanteMovingRef.current =
+                        message.moving === true;
+                }
+            },
+            [notifyVigilanteEvent]
+        );
 
     // ============================================================
     // POLLING VIGILANTE
@@ -754,6 +980,16 @@ export function RealTimeProvider({
                 return;
             }
 
+            if (
+                vigilanteSocketRef.current?.isConnected &&
+                Date.now() - lastVigilantePollRef.current <
+                SOCKET_FALLBACK_POLL_MS
+            ) {
+                return;
+            }
+
+            lastVigilantePollRef.current = Date.now();
+
             vigilanteCheckingRef.current =
                 true;
 
@@ -763,22 +999,27 @@ export function RealTimeProvider({
                         imei
                     );
 
-                if (!tracker.online) {
-                    clearVigilantePolling();
+                vigilanteFailuresRef.current = 0;
 
-                    setVigilanteEnabledState(
-                        false
-                    );
+                // Alertas/alarmes gerados pelo servidor desde a última
+                // consulta (garantia, caso o WebSocket tenha caído).
+                const events =
+                    await fetchTrackerEvents(imei, {
+                        limit: 20,
+                        since:
+                            vigilanteEventsSinceRef.current ??
+                            undefined,
+                    });
 
-                    vigilanteImeiRef.current =
-                        null;
+                [...events]
+                    .reverse()
+                    .forEach(notifyVigilanteEvent);
 
-                    setVigilanteError(
-                        'O rastreador ficou offline. O Modo Vigilante foi desligado.'
-                    );
-
-                    return;
-                }
+                // Rastreador offline NÃO desliga o Vigilante: o J16
+                // costuma entrar em modo sleep / perder o GPRS com o
+                // veículo parado — exatamente quando a vigilância
+                // importa. O polling continua e, quando ele voltar a
+                // mandar dados (ex: movimento), a notificação sai.
 
                 const status = resolveVigilanteState(
                     tracker,
@@ -794,15 +1035,8 @@ export function RealTimeProvider({
                     );
                 }
 
-                if (
-                    status.alarmPending &&
-                    !vigilanteAlarmRef.current
-                ) {
-                    void sendAlarmNotification(
-                        vigilanteTrackerNameRef.current,
-                        'Possível alarme detectado no rastreador'
-                    );
-                }
+                // Alarmes são notificados pelos eventos do servidor
+                // (com o tipo do alarme), não mais por alarmPending.
 
                 vigilanteMovingRef.current =
                     status.moving;
@@ -815,21 +1049,40 @@ export function RealTimeProvider({
                     typeof tracker.gps.latitude === 'number' &&
                     typeof tracker.gps.longitude === 'number'
                 ) {
-                    vigilantePreviousLocationRef.current = {
+                    const currentLocation: TrackerLocation = {
                         latitude: tracker.gps.latitude,
                         longitude: tracker.gps.longitude,
                         speed: Number(tracker.gps.velocidade ?? 0),
+                        satellites: tracker.gps.satelites,
                         lastUpdate:
-                            tracker.gps.dataUTC ??
-                            tracker.gps.data ??
+                            normalizeServerDate(tracker.gps.dataUTC) ??
                             new Date().toISOString(),
                     };
+
+                    vigilantePreviousLocationRef.current =
+                        currentLocation;
+
+                    if (vigilanteTrackerIdRef.current) {
+                        void saveLastLocation(
+                            vigilanteTrackerIdRef.current,
+                            currentLocation
+                        );
+                    }
                 }
             } catch (error) {
                 console.warn(
                     'Erro no polling do Modo Vigilante:',
                     error
                 );
+
+                vigilanteFailuresRef.current += 1;
+
+                if (
+                    vigilanteFailuresRef.current <
+                    MAX_CONSECUTIVE_FAILURES
+                ) {
+                    return;
+                }
 
                 clearVigilantePolling();
 
@@ -849,6 +1102,7 @@ export function RealTimeProvider({
             }
         }, [
             clearVigilantePolling,
+            notifyVigilanteEvent,
         ]);
 
     // ============================================================
@@ -880,37 +1134,21 @@ export function RealTimeProvider({
                 vigilanteTrackerNameRef.current =
                     trackerName;
 
+                vigilanteTrackerIdRef.current =
+                    trackerId;
+
                 vigilanteImeiRef.current =
                     imei;
 
+                vigilanteFailuresRef.current = 0;
+
                 try {
+                    // Pode iniciar com o rastreador offline (em modo
+                    // sleep, por exemplo) — basta o servidor responder.
                     const tracker =
                         await fetchTrackerData(
                             imei
                         );
-
-                    if (!tracker.online) {
-                        vigilanteImeiRef.current =
-                            null;
-
-                        setVigilanteEnabledState(
-                            false
-                        );
-
-                        setActiveVigilanteTrackerId(
-                            null
-                        );
-
-                        setActiveVigilanteTrackerName(
-                            null
-                        );
-
-                        setVigilanteError(
-                            'Não foi possível conectar ao rastreador. O Modo Vigilante não foi iniciado.'
-                        );
-
-                        return false;
-                    }
 
                     const initialStatus = resolveVigilanteState(
                         tracker,
@@ -933,11 +1171,21 @@ export function RealTimeProvider({
                             longitude: tracker.gps.longitude,
                             speed: Number(tracker.gps.velocidade ?? 0),
                             lastUpdate:
-                                tracker.gps.dataUTC ??
-                                tracker.gps.data ??
+                                normalizeServerDate(tracker.gps.dataUTC) ??
                                 new Date().toISOString(),
                         };
                     }
+
+                    // Só notifica eventos criados a partir de agora.
+                    notifiedEventIdsRef.current = new Set();
+
+                    const latestEvents =
+                        await fetchTrackerEvents(imei, { limit: 1 })
+                            .catch(() => []);
+
+                    vigilanteEventsSinceRef.current =
+                        latestEvents[0]?.createdAt ??
+                        new Date().toISOString();
 
                     setVigilanteEnabledState(
                         true
@@ -951,6 +1199,12 @@ export function RealTimeProvider({
                         setInterval(() => {
                             void pollVigilante();
                         }, VIGILANTE_POLLING_INTERVAL);
+
+                    // Alertas e movimento na hora, pelo WebSocket.
+                    vigilanteSocketRef.current =
+                        new RealtimeSocket(imei, {
+                            onMessage: handleVigilanteMessage,
+                        });
 
                     return true;
                 } catch (error) {
@@ -984,6 +1238,7 @@ export function RealTimeProvider({
             [
                 clearVigilantePolling,
                 pollVigilante,
+                handleVigilanteMessage,
             ]
         );
 
@@ -996,6 +1251,9 @@ export function RealTimeProvider({
             clearVigilantePolling();
 
             vigilanteImeiRef.current =
+                null;
+
+            vigilanteTrackerIdRef.current =
                 null;
 
             vigilanteMovingRef.current =
@@ -1026,6 +1284,43 @@ export function RealTimeProvider({
         }, [
             clearVigilantePolling,
         ]);
+
+    // ============================================================
+    // VIGILANTE EM SEGUNDO PLANO (serviço em primeiro plano)
+    // ============================================================
+    //
+    // Segue o estado do Vigilante: qualquer caminho que liga ou
+    // desliga o Vigilante (botão, logout, exclusão do rastreador,
+    // falhas de rede, reset) liga/desliga o serviço junto.
+
+    useEffect(() => {
+        if (!vigilanteEnabled) {
+            stopVigilanteBackground();
+            return;
+        }
+
+        startVigilanteBackground(
+            activeVigilanteTrackerName ??
+            'o rastreador'
+        );
+    }, [
+        vigilanteEnabled,
+        activeVigilanteTrackerName,
+    ]);
+
+    // Botão "Desligar" da notificação do serviço.
+    useEffect(() => {
+        const subscription =
+            addStopRequestedListener(() => {
+                stopVigilante();
+            });
+
+        return () => {
+            subscription.remove();
+        };
+    }, [
+        stopVigilante,
+    ]);
 
     // ============================================================
     // CLEANUP

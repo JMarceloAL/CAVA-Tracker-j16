@@ -4,6 +4,8 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 
 import type { Tracker } from '../../types/Tracker';
+import type { ApiTracker } from '../../services/TrackerApiService';
+import { buildStatusChips, type StatusChip } from '../../utils/trackerEvents';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useTrackerSelection } from '../../contexts/TrackerSelectionContext';
 import { styles } from './styles';
@@ -14,7 +16,16 @@ interface Props {
     onLocate(id: string): void;
     onEdit(tracker: Tracker): void;
     onPress?(tracker: Tracker): void;
+    /** Dados do servidor (online, ignição, alimentação...). */
+    serverStatus?: ApiTracker | null;
 }
+
+const CHIP_COLORS: Record<StatusChip['tone'], { fg: string; bg: string; darkBg: string }> = {
+    ok: { fg: '#2E8B57', bg: '#E8F5EE', darkBg: '#1E3A2C' },
+    warn: { fg: '#C77700', bg: '#FFF4E0', darkBg: '#3D2F14' },
+    danger: { fg: '#C0392B', bg: '#FDECEA', darkBg: '#40201D' },
+    neutral: { fg: '#6B7280', bg: '#F1F3F5', darkBg: '#2A3240' },
+};
 
 /**
  * Formata o número pra exibição, ex: "61999999999" -> "(61) 99999-9999".
@@ -41,6 +52,7 @@ export default function TrackerCard({
     onLocate,
     onEdit,
     onPress,
+    serverStatus,
 }: Props) {
     const { isDark, colors } = useTheme();
     const { selectedTrackerId, setSelectedTrackerId } = useTrackerSelection();
@@ -81,6 +93,39 @@ export default function TrackerCard({
                     <MaterialIcons name="phone" size={12} color={isDark ? '#AFB9C7' : '#75806D'} />
                     <Text style={[styles.phone, isDark && styles.darkPhone]}>{formatPhone(tracker.phone)}</Text>
                 </View>
+
+                {/* Painel de status (dados do servidor) */}
+                {serverStatus && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6, gap: 4 }}>
+                        {buildStatusChips(
+                            serverStatus.online,
+                            serverStatus.lastSeen,
+                            serverStatus.deviceStatus,
+                            serverStatus.gps?.satelites
+                        ).map(chip => {
+                            const palette = CHIP_COLORS[chip.tone];
+
+                            return (
+                                <View
+                                    key={chip.key}
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        paddingHorizontal: 6,
+                                        paddingVertical: 2,
+                                        borderRadius: 10,
+                                        backgroundColor: isDark ? palette.darkBg : palette.bg,
+                                    }}
+                                >
+                                    <MaterialIcons name={chip.icon as any} size={11} color={palette.fg} />
+                                    <Text style={{ fontSize: 10, marginLeft: 3, color: palette.fg, fontWeight: '600' }}>
+                                        {chip.label}
+                                    </Text>
+                                </View>
+                            );
+                        })}
+                    </View>
+                )}
 
 
             </View>

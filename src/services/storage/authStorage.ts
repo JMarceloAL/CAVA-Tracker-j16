@@ -58,32 +58,67 @@ export async function getSession(): Promise<boolean> {
     return session === 'true';
 }
 
+/*
+    Salva usuário e senha. Existe um ÚNICO lugar de verdade: o
+    SecureStore (criptografado). O AsyncStorage (texto puro) só é
+    usado se o SecureStore não estiver disponível — e, quando o
+    SecureStore funciona, a cópia antiga em texto puro é apagada.
+
+    Antes havia duas cópias (SecureStore só quando a biometria era
+    ativada + AsyncStorage sempre), e trocar a senha com a biometria
+    desligada deixava a senha ANTIGA no SecureStore, que tinha
+    prioridade na leitura — a senha nova era recusada no login.
+*/
 export async function saveCredentials(username: string, password: string): Promise<void> {
     const payload: StoredCredentials = {
         username: username.trim(),
         password: password.trim(),
     };
 
-    await AsyncStorage.setItem(CREDENTIALS_KEY, JSON.stringify(payload));
-}
-
-export async function saveCredentialsSecure(username: string, password: string): Promise<void> {
-    const payload: StoredCredentials = {
-        username: username.trim(),
-        password: password.trim(),
-    };
-
-    // Save to SecureStore
     try {
         if (SecureStore && SecureStore.setItemAsync) {
             await SecureStore.setItemAsync(SECURE_CREDENTIALS_KEY, JSON.stringify(payload));
+            await AsyncStorage.removeItem(CREDENTIALS_KEY);
+            return;
         }
     } catch (error) {
         console.warn('Não foi possível salvar credenciais no SecureStore:', error);
     }
 
-    // Also save in AsyncStorage for backward compatibility
     await AsyncStorage.setItem(CREDENTIALS_KEY, JSON.stringify(payload));
+}
+
+/*
+    Mantido por compatibilidade com quem já chama esse nome —
+    hoje é igual a saveCredentials.
+*/
+export async function saveCredentialsSecure(username: string, password: string): Promise<void> {
+    await saveCredentials(username, password);
+}
+
+/*
+    Apaga as credenciais salvas (usado no "restaurar padrões de
+    fábrica"). O AsyncStorage.clear() não alcança o SecureStore.
+*/
+export async function clearCredentials(): Promise<void> {
+    try {
+        if (SecureStore && SecureStore.deleteItemAsync) {
+            await SecureStore.deleteItemAsync(SECURE_CREDENTIALS_KEY);
+        }
+    } catch (error) {
+        console.warn('Não foi possível apagar credenciais do SecureStore:', error);
+    }
+
+    await AsyncStorage.removeItem(CREDENTIALS_KEY);
+}
+
+/*
+    Retorna true se ainda estiver usando o usuário/senha padrão
+    (root/root) — o app avisa pra trocar.
+*/
+export async function isUsingDefaultCredentials(): Promise<boolean> {
+    const creds = await getCredentials();
+    return creds.username === 'root' && creds.password === 'root';
 }
 
 export async function setBiometricEnabled(enabled: boolean): Promise<void> {
@@ -137,10 +172,17 @@ export async function getCredentials(): Promise<StoredCredentials> {
     try {
         const parsed = JSON.parse(raw) as Partial<StoredCredentials>;
 
-        return {
+        const credentials = {
             username: parsed.username?.trim() || 'root',
             password: parsed.password?.trim() || 'root',
         };
+
+        // Migra a cópia antiga em texto puro pro SecureStore.
+        if (SecureStore) {
+            await saveCredentials(credentials.username, credentials.password);
+        }
+
+        return credentials;
     } catch (error) {
         console.warn('Erro ao ler credenciais salvas:', error);
         return { username: 'root', password: 'root' };

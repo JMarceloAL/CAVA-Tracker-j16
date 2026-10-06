@@ -40,15 +40,18 @@ export function parseTrackerReply(rawMessage) {
         return { type: 'deliveryReport', raw: message };
     }
 
-    if (NO_SIGNAL_REGEX.test(message)) {
-        return { type: 'noSignal', raw: message };
-    }
-
+    // Localização e status são verificados ANTES do "sem sinal": uma
+    // resposta de STATUS# traz campos como "GPRS:offline" / "GPS:OFF",
+    // que casariam com NO_SIGNAL_REGEX e seriam classificados errado.
     const locationMatch = message.match(LOCATION_REGEX);
     if (locationMatch) {
         return {
             type: 'location',
-            timestamp: locationMatch[1] ?? new Date().toISOString(),
+            // O horário do rastreador vem como "MM-DD HH:mm" (sem ano
+            // nem fuso) — guardado à parte. `timestamp` é o momento em
+            // que a resposta chegou, em ISO.
+            timestamp: new Date().toISOString(),
+            trackerTime: locationMatch[1] ?? null,
             url: locationMatch[2],
             latitude: parseFloat(locationMatch[3]),
             longitude: parseFloat(locationMatch[4]),
@@ -70,6 +73,10 @@ export function parseTrackerReply(rawMessage) {
             if (match) status[key] = match[1].trim();
         }
         return status;
+    }
+
+    if (NO_SIGNAL_REGEX.test(message)) {
+        return { type: 'noSignal', raw: message };
     }
 
     if (message.startsWith('RELAY:')) {

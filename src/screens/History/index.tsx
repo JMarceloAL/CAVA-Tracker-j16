@@ -23,6 +23,14 @@ import {
 
 import { syncTrackerHistory } from '../../services/TrackerHistorySync';
 
+import { normalizeServerDate } from '../../utils/serverDate';
+import { eventAppearance } from '../../utils/trackerEvents';
+
+import {
+    fetchTrackerEvents,
+    type ApiTrackerEvent,
+} from '../../services/TrackerApiService';
+
 import type {
     Tracker,
     TrackerLocation,
@@ -36,7 +44,7 @@ import { styles } from './styles';
 
 const STORAGE_KEY = '@cavalleta:trackers';
 
-type TabKey = 'locations' | 'routes';
+type TabKey = 'locations' | 'routes' | 'alerts';
 
 export default function History({ navigation }: any) {
 
@@ -71,6 +79,13 @@ export default function History({ navigation }: any) {
 
     const [loadingData, setLoadingData] =
         useState(false);
+
+    // Alertas e alarmes registrados pelo servidor.
+    const [events, setEvents] =
+        useState<ApiTrackerEvent[]>([]);
+
+    const [eventsError, setEventsError] =
+        useState<string | null>(null);
 
     // Aviso exibido quando não foi possível sincronizar com o
     // servidor (API fora do ar) ou quando o rastreador não tem
@@ -234,6 +249,21 @@ export default function History({ navigation }: any) {
 
         setSyncError(null);
 
+        setEvents([]);
+        setEventsError(null);
+
+        // Alertas vêm só do servidor (sem cache local) — carregados
+        // em paralelo, sem segurar o resto da tela.
+        if (tracker.imei) {
+            void fetchTrackerEvents(tracker.imei, { limit: 100 })
+                .then(setEvents)
+                .catch(() =>
+                    setEventsError(
+                        'Não foi possível carregar os alertas do servidor.'
+                    )
+                );
+        }
+
         // Sem IMEI não há como consultar o servidor — usa direto
         // o cache local, sem tentar a rede.
         if (!tracker.imei) {
@@ -332,8 +362,10 @@ export default function History({ navigation }: any) {
             return 'Data não disponível';
         }
 
+        // Cache antigo pode ter datas no formato UTC do servidor
+        // ("AAAA-MM-DD HH:mm:ss", sem fuso).
         const date =
-            new Date(value);
+            new Date(normalizeServerDate(value));
 
         if (isNaN(date.getTime())) {
             return value;
@@ -605,12 +637,45 @@ export default function History({ navigation }: any) {
                                 Rotas
                             </Text>
                         </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.tabButton,
+                                isDark && styles.darkTabButton,
+                                activeTab === 'alerts' && styles.tabButtonActive,
+                                activeTab === 'alerts' && { backgroundColor: colors.primary, borderColor: colors.primary },
+                            ]}
+                            onPress={() => setActiveTab('alerts')}
+                        >
+                            <MaterialIcons
+                                name="notifications"
+                                size={16}
+                                color={activeTab === 'alerts' ? '#FFFFFF' : colors.textMuted}
+                            />
+
+                            <Text
+                                style={[
+                                    styles.tabButtonText,
+                                    { color: activeTab === 'alerts' ? '#FFFFFF' : colors.textMuted },
+                                    isDark && styles.darkTabButtonText,
+                                    activeTab === 'alerts' && styles.tabButtonTextActive,
+                                ]}
+                            >
+                                Alertas
+                            </Text>
+                        </TouchableOpacity>
                     </View>
 
                     <View style={folderStyle}>
                         <View style={folderHeaderStyle}>
                             <MaterialIcons
-                                name={activeTab === 'locations' ? 'folder-open' : 'alt-route'}
+                                name={
+                                    activeTab === 'locations'
+                                        ? 'folder-open'
+                                        : activeTab === 'alerts'
+                                            ? 'notifications'
+                                            : 'alt-route'
+                                }
                                 size={20}
                                 color={colors.primary}
                             />
@@ -618,7 +683,9 @@ export default function History({ navigation }: any) {
                             <Text style={folderHeaderTextStyle} numberOfLines={1}>
                                 {activeTab === 'locations'
                                     ? `Últimas localizações — ${selectedTracker.name}`
-                                    : `Rotas percorridas — ${selectedTracker.name}`}
+                                    : activeTab === 'alerts'
+                                        ? `Alertas e alarmes — ${selectedTracker.name}`
+                                        : `Rotas percorridas — ${selectedTracker.name}`}
                             </Text>
                         </View>
 
@@ -674,7 +741,7 @@ export default function History({ navigation }: any) {
                                                         isDark && styles.darkHistoryItemTitle,
                                                     ]}
                                                 >
-                                                    {index === 0 ? 'Localização mais recente' : `${index + 1}ª localização anterior`}
+                                                    {index === 0 ? 'Localização mais recente' : `${index}ª localização anterior`}
                                                 </Text>
 
                                                 <Text
@@ -705,9 +772,94 @@ export default function History({ navigation }: any) {
                                     )}
                                 />
                             )
+                        ) : activeTab === 'alerts' ? (
+                            eventsError || !selectedTracker.imei ? (
+                                <Text style={emptyTextStyle}>
+                                    {selectedTracker.imei
+                                        ? eventsError
+                                        : 'Este rastreador não tem IMEI cadastrado — os alertas vêm do servidor.'}
+                                </Text>
+                            ) : events.length === 0 ? (
+                                <Text style={emptyTextStyle}>
+                                    Nenhum alerta registrado ainda. Configure os alertas no menu "Alertas e cercas".
+                                </Text>
+                            ) : (
+                                <FlatList
+                                    data={events}
+                                    keyExtractor={item => item.id}
+                                    renderItem={({ item }) => {
+                                        const appearance = eventAppearance(item);
+                                        const hasPosition =
+                                            typeof item.latitude === 'number' &&
+                                            typeof item.longitude === 'number';
+
+                                        return (
+                                            <TouchableOpacity
+                                                style={[
+                                                    styles.historyItem,
+                                                    isDark && styles.darkHistoryItem,
+                                                ]}
+                                                disabled={!hasPosition}
+                                                onPress={() =>
+                                                    handleSelectLocation({
+                                                        latitude: item.latitude as number,
+                                                        longitude: item.longitude as number,
+                                                        lastUpdate: item.createdAt,
+                                                    })
+                                                }
+                                                activeOpacity={0.7}
+                                            >
+                                                <MaterialIcons
+                                                    name={appearance.icon as any}
+                                                    size={22}
+                                                    color={appearance.color}
+                                                    style={{ marginRight: 8 }}
+                                                />
+
+                                                <View style={{ flex: 1 }}>
+                                                    <Text
+                                                        style={[
+                                                            styles.historyItemTitle,
+                                                            isDark && styles.darkHistoryItemTitle,
+                                                        ]}
+                                                    >
+                                                        {item.title}
+                                                    </Text>
+
+                                                    <Text
+                                                        style={[
+                                                            styles.historyItemCoords,
+                                                            isDark && styles.darkHistoryItemCoords,
+                                                        ]}
+                                                    >
+                                                        {item.message}
+                                                    </Text>
+
+                                                    <Text
+                                                        style={[
+                                                            styles.historyItemDate,
+                                                            isDark && styles.darkHistoryItemDate,
+                                                        ]}
+                                                    >
+                                                        {formatDate(item.createdAt)}
+                                                    </Text>
+                                                </View>
+
+                                                {hasPosition && (
+                                                    <MaterialIcons
+                                                        name="chevron-right"
+                                                        size={20}
+                                                        color={isDark ? '#667384' : '#CCCCCC'}
+                                                    />
+                                                )}
+                                            </TouchableOpacity>
+                                        );
+                                    }}
+                                />
+                            )
                         ) : routes.length === 0 ? (
                             <Text style={emptyTextStyle}>
-                                Nenhuma rota registrada ainda. As rotas são gravadas automaticamente enquanto o Tempo Real estiver ativo e o rastreador se mover.
+                                Nenhuma rota registrada ainda. O servidor grava as rotas automaticamente sempre que o rastreador se desloca.
                             </Text>
                         ) : (
                             <FlatList

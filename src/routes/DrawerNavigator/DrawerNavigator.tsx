@@ -4,7 +4,11 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import { MaterialIcons } from '@expo/vector-icons';
 import TabNavigator from '../TabNavigator/TabNavigator'; import SettingsScreen from '../../screens/Settings';
 import InfoScreen from '../../screens/Info'; import { logout } from '../../services/storage/authStorage';
+import AlertsScreen from '../../screens/Alerts';
+import ReportsScreen from '../../screens/Reports';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useRealTime } from '../../contexts/RealTimeContext';
+import { useTrackerServiceProvider } from '../../contexts/TrackerServiceContext';
 import { APP_GREEN } from '../../theme/colors';
 
 const Drawer = createDrawerNavigator();
@@ -16,6 +20,8 @@ function EmptyScreen() {
 
 export default function DrawerNavigator() {
     const { isDark, colors } = useTheme();
+    const { stopRealTime, stopVigilante } = useRealTime();
+    const { clearService } = useTrackerServiceProvider();
 
     return (
         <Drawer.Navigator
@@ -46,6 +52,28 @@ export default function DrawerNavigator() {
                 options={{
                     drawerIcon: ({ color, size }) => (
                         <MaterialIcons name="home" color={color} size={size} />
+                    ),
+                }}
+            />
+
+            {/* ITEM: ALERTAS E CERCAS */}
+            <Drawer.Screen
+                name="Alertas e cercas"
+                component={AlertsScreen}
+                options={{
+                    drawerIcon: ({ color, size }) => (
+                        <MaterialIcons name="notifications-active" color={color} size={size} />
+                    ),
+                }}
+            />
+
+            {/* ITEM: RELATÓRIOS */}
+            <Drawer.Screen
+                name="Relatórios"
+                component={ReportsScreen}
+                options={{
+                    drawerIcon: ({ color, size }) => (
+                        <MaterialIcons name="bar-chart" color={color} size={size} />
                     ),
                 }}
             />
@@ -83,6 +111,12 @@ export default function DrawerNavigator() {
 
                         const runLogout = async () => {
                             try {
+                                // Ao sair, nada continua rodando (nem
+                                // notificando) em nome do usuário.
+                                stopRealTime();
+                                stopVigilante();
+                                clearService();
+
                                 await logout();
                                 const parent = navigation.getParent();
                                 const root = parent?.getParent() ?? parent;

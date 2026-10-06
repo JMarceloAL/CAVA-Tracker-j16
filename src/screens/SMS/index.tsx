@@ -144,6 +144,17 @@ export default function SmsScreen() {
     }
 
     function handleStatusCommandPress(cmd: StatusCommand) {
+        // Comandos críticos (ex: cortar óleo/energia) pedem a senha
+        // do app antes, mesmo fora da seção protegida.
+        if (cmd.requiresPassword) {
+            requestUnlock(() => runStatusCommand(cmd));
+            return;
+        }
+
+        runStatusCommand(cmd);
+    }
+
+    function runStatusCommand(cmd: StatusCommand) {
         if (cmd.id === 'location') {
             if (!selectedTracker) {
                 Alert.alert('Aviso', 'Selecione um rastreador primeiro.');

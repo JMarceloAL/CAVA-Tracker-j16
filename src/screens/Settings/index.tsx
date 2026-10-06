@@ -35,10 +35,14 @@ import { useNavigation } from '@react-navigation/native';
 import {
     getCredentials,
     saveCredentials,
-    saveCredentialsSecure,
+    clearCredentials,
     getBiometricEnabled,
     setBiometricEnabled,
+    logout,
 } from '../../services/storage/authStorage';
+
+import { useRealTime } from '../../contexts/RealTimeContext';
+import { useTrackerServiceProvider } from '../../contexts/TrackerServiceContext';
 
 import Collapsible from '../../components/Collapsible';
 import { APP_GREEN, APP_THEMES, APP_THEME_OPTIONS, type AppThemeName } from '../../theme/colors';
@@ -53,6 +57,9 @@ export default function SettingsScreen({
         colors,
         setTheme,
     } = useTheme();
+
+    const { stopRealTime, stopVigilante } = useRealTime();
+    const { clearService } = useTrackerServiceProvider();
 
     const [
         username,
@@ -198,8 +205,6 @@ export default function SettingsScreen({
                 return;
             }
 
-            const creds = await getCredentials();
-            await saveCredentialsSecure(creds.username, creds.password);
             await setBiometricEnabled(true);
             setBiometricEnabledState(true);
         } catch (error) {
@@ -233,17 +238,12 @@ export default function SettingsScreen({
         }
 
         try {
+            // Um único lugar de armazenamento (SecureStore) — vale
+            // tanto pro login com senha quanto pela biometria.
             await saveCredentials(
                 username,
                 password
             );
-
-            // Se a biometria já estava ativada, mantém a credencial
-            // segura sincronizada com a nova senha — senão o login
-            // por biometria continuaria usando a senha antiga.
-            if (biometricEnabled) {
-                await saveCredentialsSecure(username, password);
-            }
 
             Alert.alert(
                 'Sucesso',
@@ -258,47 +258,6 @@ export default function SettingsScreen({
                 'Não foi possível salvar as credenciais.'
             );
         }
-    }
-
-    /**
-     * ========================================================
-     * LIMPAR STORAGE
-     * ========================================================
-     */
-    function handleClearStorage() {
-        Alert.alert(
-            'Limpar armazenamento',
-            'Isso vai apagar todos os rastreadores cadastrados, histórico e dados salvos no app. Deseja continuar?',
-            [
-                {
-                    text: 'Não',
-                    style: 'cancel',
-                },
-                {
-                    text: 'Sim',
-                    style: 'destructive',
-                    onPress: async () => {
-                        setClearing(true);
-
-                        try {
-                            await AsyncStorage.clear();
-
-                            Alert.alert(
-                                'Concluído',
-                                'O armazenamento do app foi limpo.'
-                            );
-                        } catch (error) {
-                            Alert.alert(
-                                'Erro',
-                                'Não foi possível limpar o armazenamento.'
-                            );
-                        } finally {
-                            setClearing(false);
-                        }
-                    },
-                },
-            ]
-        );
     }
 
     /**
@@ -317,12 +276,31 @@ export default function SettingsScreen({
                         setClearing(true);
 
                         try {
+                            // Para tudo que está rodando antes de
+                            // apagar os dados.
+                            stopRealTime();
+                            stopVigilante();
+                            clearService();
+
                             await AsyncStorage.clear();
+
+                            // AsyncStorage.clear() não alcança o
+                            // SecureStore — sem isso a senha antiga
+                            // continuava valendo.
+                            await clearCredentials();
+
+                            await setTheme('light');
+                            await logout();
 
                             Alert.alert(
                                 'Concluído',
-                                'O app foi restaurado para os padrões de fábrica.'
+                                'O app foi restaurado para os padrões de fábrica. Entre com usuário e senha padrão (root / root).'
                             );
+
+                            // Volta ao login: as telas são montadas de
+                            // novo, já sem os dados antigos em memória.
+                            const root = navigation?.getParent?.() ?? nav.getParent?.();
+                            root?.replace?.('Login');
                         } catch (error) {
                             Alert.alert(
                                 'Erro',

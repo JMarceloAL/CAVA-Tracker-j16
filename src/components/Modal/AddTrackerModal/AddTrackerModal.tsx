@@ -89,9 +89,10 @@ export default function AddTrackerModal({
                 error instanceof Error ? error.message : 'Erro desconhecido'
             );
         } finally {
+            // Não limpa os campos aqui: se o cadastro falhar, o modal
+            // continua aberto com o que foi digitado. Ao reabrir, o
+            // useEffect acima reinicia os campos.
             setLoading(false);
-            setName('');
-            setPhone('');
         }
     }
 

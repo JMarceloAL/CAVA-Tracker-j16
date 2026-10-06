@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 
 import {
     Alert,
@@ -12,6 +12,7 @@ import { TrackerService } from '../../services/Trackerservice';
 
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 
 import TrackerCard from '../../components/Card/TrackerCard';
 import AddTrackerModal from '../../components/Modal/AddTrackerModal/AddTrackerModal';
@@ -24,6 +25,17 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { requestSmsPermissions } from '../../services/Smsgateway';
 import { detectImeiInBackground } from '../../services/ImeiDetection';
 import { useTrackerSelection } from '../../contexts/TrackerSelectionContext';
+import { useRealTime } from '../../contexts/RealTimeContext';
+import { clearTrackerLocationCache } from '../../services/storage/LastlocationStorage';
+import { clearTrackerRoutes } from '../../services/storage/RouteHistoryStorage';
+import {
+    fetchAllTrackers,
+    normalizeImei,
+    type ApiTracker,
+} from '../../services/TrackerApiService';
+
+// Atualização do painel de status enquanto a tela está aberta.
+const STATUS_REFRESH_MS = 30 * 1000;
 
 interface Props {
     navigation: any;
@@ -38,7 +50,44 @@ export default function Home({ navigation }: Props) {
     const [modalVisible, setModalVisible] = useState(false);
     const [editingTracker, setEditingTracker] = useState<Tracker | null>(null);
 
+    // Status de cada rastreador no servidor, por IMEI normalizado.
+    const [serverStatus, setServerStatus] = useState<Record<string, ApiTracker>>({});
+
+    const refreshServerStatus = useCallback(async () => {
+        try {
+            const list = await fetchAllTrackers();
+            const byImei: Record<string, ApiTracker> = {};
+
+            list.forEach(item => {
+                byImei[normalizeImei(item.imei)] = item;
+            });
+
+            setServerStatus(byImei);
+        } catch (error) {
+            // Sem servidor: os cards ficam sem o painel de status.
+            console.warn('Erro ao buscar status dos rastreadores', error);
+        }
+    }, []);
+
+    useFocusEffect(
+        useCallback(() => {
+            void refreshServerStatus();
+
+            const timer = setInterval(() => {
+                void refreshServerStatus();
+            }, STATUS_REFRESH_MS);
+
+            return () => clearInterval(timer);
+        }, [refreshServerStatus])
+    );
+
     const { getService } = useTrackerServiceProvider();
+    const {
+        activeTrackerId,
+        stopRealTime,
+        activeVigilanteTrackerId,
+        stopVigilante,
+    } = useRealTime();
 
     useEffect(() => {
         loadTrackers();
@@ -106,7 +155,11 @@ export default function Home({ navigation }: Props) {
         }
     }
 
-    async function handleAddTracker(name: string, phone: string) {
+    /**
+     * Retorna true se o rastreador foi cadastrado (o modal só fecha
+     * nesse caso — em caso de erro, o que foi digitado é mantido).
+     */
+    async function handleAddTracker(name: string, phone: string): Promise<boolean> {
         try {
             await requestSmsPermissions();
 
@@ -124,7 +177,7 @@ export default function Home({ navigation }: Props) {
                     'Não foi possível realizar a conexão com o rastreador',
                     'Não recebemos a resposta do IMEI em 1 minuto. Verifique o número do chip e tente cadastrar novamente.'
                 );
-                return;
+                return false;
             }
 
             const newTracker: Tracker = {
@@ -135,12 +188,14 @@ export default function Home({ navigation }: Props) {
             };
 
             await saveTrackers([newTracker, ...trackers]);
+            return true;
         } catch (error: any) {
             console.log('⚠️ Permissão de SMS negada, IMEI não será detectado:', error.message);
             Alert.alert(
                 'Não foi possível realizar a conexão com o rastreador',
                 'Não foi possível confirmar o IMEI do rastreador. Verifique o número do chip e tente cadastrar novamente.'
             );
+            return false;
         }
     }
 
@@ -170,11 +225,15 @@ export default function Home({ navigation }: Props) {
     async function handleSaveTracker(name: string, phone: string) {
         if (editingTracker) {
             await handleEditTracker(editingTracker.id, name, phone);
-        } else {
-            await handleAddTracker(name, phone);
+            closeModal();
+            return;
         }
 
-        closeModal();
+        const added = await handleAddTracker(name, phone);
+
+        if (added) {
+            closeModal();
+        }
     }
 
     async function handleDeleteTracker(id: string) {
@@ -186,10 +245,23 @@ export default function Home({ navigation }: Props) {
                 {
                     text: 'Sim',
                     onPress: async () => {
+                        // Não deixa Tempo Real / Vigilante rodando (e
+                        // notificando) para um rastreador apagado.
+                        if (activeTrackerId === id) {
+                            stopRealTime();
+                        }
+
+                        if (activeVigilanteTrackerId === id) {
+                            stopVigilante();
+                        }
+
                         const nextTrackers = trackers.filter(
                             tracker => tracker.id !== id
                         );
                         await saveTrackers(nextTrackers);
+
+                        await clearTrackerLocationCache(id);
+                        await clearTrackerRoutes(id);
                     },
                 },
             ]
@@ -250,6 +322,11 @@ export default function Home({ navigation }: Props) {
                         onDelete={handleDeleteTracker}
                         onLocate={handleLocateTracker}
                         onEdit={openEditModal}
+                        serverStatus={
+                            item.imei
+                                ? serverStatus[normalizeImei(item.imei)] ?? null
+                                : null
+                        }
                         onPress={(tracker) => {
                             setSelectedTrackerId(tracker.id);
                             navigation.navigate('MapScreen', {

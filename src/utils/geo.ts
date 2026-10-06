@@ -23,3 +23,39 @@ export function distanceInMeters(
 
     return R * c;
 }
+/**
+ * Polígono (GeoJSON) aproximando um círculo de `radiusMeters` em volta
+ * do centro — usado pra desenhar as cercas virtuais no mapa.
+ */
+export function circlePolygon(
+    latitude: number,
+    longitude: number,
+    radiusMeters: number,
+    steps = 64
+) {
+    const earthRadius = 6371000;
+    const latRad = (latitude * Math.PI) / 180;
+    const coordinates: [number, number][] = [];
+
+    for (let i = 0; i <= steps; i++) {
+        const angle = (i / steps) * 2 * Math.PI;
+        const dLat = (radiusMeters * Math.cos(angle)) / earthRadius;
+        const dLon =
+            (radiusMeters * Math.sin(angle)) /
+            (earthRadius * Math.cos(latRad));
+
+        coordinates.push([
+            longitude + (dLon * 180) / Math.PI,
+            latitude + (dLat * 180) / Math.PI,
+        ]);
+    }
+
+    return {
+        type: 'Feature' as const,
+        properties: {},
+        geometry: {
+            type: 'Polygon' as const,
+            coordinates: [coordinates],
+        },
+    };
+}

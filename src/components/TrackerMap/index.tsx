@@ -48,6 +48,15 @@ type Props = {
     followEnabled?: boolean;
 
     /**
+     * true (padrão): `routePoints` é uma rota fechada (histórico) —
+     * a câmera enquadra a rota inteira e não segue o marcador.
+     *
+     * false: é o trajeto do Tempo Real — a linha é desenhada, mas a
+     * câmera continua seguindo o rastreador normalmente.
+     */
+    fitRoute?: boolean;
+
+    /**
      * Chamado quando o usuário movimenta o mapa manualmente.
      */
     onUserPanned?: () => void;
@@ -84,6 +93,7 @@ const TrackerMap = forwardRef<TrackerMapHandle, Props>(
             location,
             routePoints = [],
             followEnabled = true,
+            fitRoute = true,
             onUserPanned,
         },
         ref
@@ -199,6 +209,14 @@ const TrackerMap = forwardRef<TrackerMapHandle, Props>(
             }, [
                 routePoints,
             ]);
+
+        /**
+         * Existe uma rota a ser enquadrada (histórico)? Nesse caso a
+         * câmera fica na rota, em vez de seguir o marcador.
+         */
+        const hasFittedRoute =
+            fitRoute &&
+            validRoutePoints.length >= 2;
 
         /**
          * GeoJSON da rota.
@@ -406,7 +424,7 @@ const TrackerMap = forwardRef<TrackerMapHandle, Props>(
                      */
                     if (
                         routeBounds &&
-                        validRoutePoints.length >= 2
+                        hasFittedRoute
                     ) {
                         cameraRef.current?.fitBounds(
                             routeBounds,
@@ -439,7 +457,7 @@ const TrackerMap = forwardRef<TrackerMapHandle, Props>(
             [
                 routeBounds,
                 routePadding,
-                validRoutePoints.length,
+                hasFittedRoute,
                 location,
                 lngLat,
             ]
@@ -453,7 +471,7 @@ const TrackerMap = forwardRef<TrackerMapHandle, Props>(
         useEffect(() => {
             if (
                 !routeBounds ||
-                validRoutePoints.length < 2
+                !hasFittedRoute
             ) {
                 return;
             }
@@ -502,6 +520,7 @@ const TrackerMap = forwardRef<TrackerMapHandle, Props>(
         }, [
             routeBounds,
             routePadding,
+            hasFittedRoute,
             validRoutePoints.length,
             routeKey,
         ]);
@@ -522,7 +541,7 @@ const TrackerMap = forwardRef<TrackerMapHandle, Props>(
              * o fitBounds cuida da câmera.
              */
             if (
-                validRoutePoints.length >= 2
+                hasFittedRoute
             ) {
                 return;
             }
@@ -554,7 +573,21 @@ const TrackerMap = forwardRef<TrackerMapHandle, Props>(
         }, [
             location,
             lngLat,
-            validRoutePoints.length,
+            hasFittedRoute,
+        ]);
+
+        /**
+         * Quando o modo seguir é (re)ativado — pelo botão de
+         * recentralizar ou pela tela (troca de rastreador, Tempo
+         * Real) — esquece o arraste manual anterior. Sem isso a
+         * câmera ficava parada mesmo com o modo seguir ligado.
+         */
+        useEffect(() => {
+            if (followEnabled) {
+                userInteractionRef.current = false;
+            }
+        }, [
+            followEnabled,
         ]);
 
         /**
@@ -574,7 +607,7 @@ const TrackerMap = forwardRef<TrackerMapHandle, Props>(
              * não mover a câmera.
              */
             if (
-                validRoutePoints.length >= 2
+                hasFittedRoute
             ) {
                 return;
             }
@@ -600,7 +633,7 @@ const TrackerMap = forwardRef<TrackerMapHandle, Props>(
             location,
             lngLat,
             followEnabled,
-            validRoutePoints.length,
+            hasFittedRoute,
         ]);
 
         /**

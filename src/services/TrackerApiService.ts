@@ -1,6 +1,7 @@
 // src/services/TrackerApiService.ts
 
 import type { TrackerLocation } from '../types/Tracker';
+import { normalizeServerDate } from '../utils/serverDate';
 
 const API_URL = (
     process.env.EXPO_PUBLIC_API_URL ??
@@ -12,7 +13,7 @@ const API_KEY = process.env.EXPO_PUBLIC_API_KEY;
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
-function normalizeImei(imei: string): string {
+export function normalizeImei(imei: string): string {
     const digits = String(imei).replace(/\D/g, '');
 
     return digits.padStart(16, '0');
@@ -27,9 +28,15 @@ function normalizeImei(imei: string): string {
  * que dependa dele (como o Modo Vigilante) nunca detecta a
  * queda e nunca sai do estado de "carregando".
  */
+type ApiRequestOptions = {
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    body?: unknown;
+};
+
 async function apiFetch(
     path: string,
-    timeoutMs: number = DEFAULT_TIMEOUT_MS
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+    { method = 'GET', body }: ApiRequestOptions = {}
 ) {
     const controller = new AbortController();
 
@@ -42,10 +49,18 @@ async function apiFetch(
         const response = await fetch(
             `${API_URL}/api${path}`,
             {
+                method,
                 headers: {
                     'x-api-key': API_KEY ?? '',
                     Accept: 'application/json',
+                    ...(body !== undefined
+                        ? { 'Content-Type': 'application/json' }
+                        : {}),
                 },
+                body:
+                    body !== undefined
+                        ? JSON.stringify(body)
+                        : undefined,
                 signal: controller.signal,
             }
         );
@@ -102,11 +117,28 @@ export type ApiMovement = {
     lastAlarmAt: string | null;
 };
 
+/**
+ * Status do aparelho (heartbeat / alarmes). Campos ausentes = ainda
+ * não informados pelo rastreador.
+ */
+export type ApiDeviceStatus = {
+    acc?: boolean;
+    accChangedAt?: string;
+    externalPower?: boolean;
+    relayCut?: boolean;
+    gpsTracking?: boolean;
+    defense?: boolean;
+    voltageLevel?: number;
+    gsmLevel?: number;
+    updatedAt?: string;
+};
+
 export type ApiTracker = {
     imei: string;
     online: boolean;
     lastSeen: string | null;
     gps: ApiGps | null;
+    deviceStatus?: ApiDeviceStatus;
     heartbeat: {
         status: number;
         serial: string;
@@ -205,8 +237,7 @@ export async function fetchTrackerLocationFromApi(
                 : payload.satellites,
 
         lastUpdate:
-            payload.dataUTC ??
-            payload.data ??
+            normalizeServerDate(payload.dataUTC) ??
             payload.lastSeen ??
             new Date().toISOString(),
     };
@@ -353,8 +384,10 @@ export async function checkRealtimeAvailability(
     );
 
     try {
+        // Usa /location (só a posição atual) em vez de /tracker, que
+        // traz também histórico — isso roda a cada 5 segundos.
         const response = await fetch(
-            `${API_URL}/api/tracker/${normalizedImei}`,
+            `${API_URL}/api/location/${normalizedImei}`,
             {
                 headers: {
                     'x-api-key': API_KEY ?? '',
@@ -363,16 +396,25 @@ export async function checkRealtimeAvailability(
             }
         );
 
+        // 404 = servidor respondeu, mas ainda não há posição válida
+        // para esse IMEI.
+        if (response.status === 404) {
+            return {
+                status: 'no-location',
+            };
+        }
+
         if (!response.ok) {
             return {
                 status: 'no-connection',
             };
         }
 
-        const data: Partial<ApiTracker> =
-            await response.json();
+        const data: Partial<ApiGps> & {
+            lastSeen?: string | null;
+        } = await response.json();
 
-        const gps = data.gps;
+        const gps = data;
 
         if (
             !gps ||
@@ -398,8 +440,7 @@ export async function checkRealtimeAvailability(
                 satellites: gps.satelites,
 
                 lastUpdate:
-                    gps.dataUTC ??
-                    gps.data ??
+                    normalizeServerDate(gps.dataUTC) ??
                     data.lastSeen ??
                     new Date().toISOString(),
             },
@@ -411,4 +452,200 @@ export async function checkRealtimeAvailability(
     } finally {
         clearTimeout(timeout);
     }
+}
+// ============================================================
+// WEBSOCKET (Tempo Real / eventos)
+// ============================================================
+
+/**
+ * URL do WebSocket do servidor, filtrado pelo IMEI. Mesmo host da API
+ * (https -> wss, http -> ws), autenticado pela API key.
+ */
+export function buildRealtimeSocketUrl(imei: string): string {
+    const wsBase = API_URL.replace(/^http/i, 'ws');
+
+    return (
+        `${wsBase}/ws` +
+        `?apiKey=${encodeURIComponent(API_KEY ?? '')}` +
+        `&imei=${encodeURIComponent(normalizeImei(imei))}`
+    );
+}
+
+// ============================================================
+// EVENTOS (alertas e alarmes)
+// ============================================================
+
+export type TrackerEventType =
+    | 'SPEEDING'
+    | 'IGNITION_FORBIDDEN'
+    | 'OFFLINE'
+    | 'ONLINE'
+    | 'POWER_CUT'
+    | 'GEOFENCE_ENTER'
+    | 'GEOFENCE_EXIT'
+    | 'ALARM';
+
+export type ApiTrackerEvent = {
+    id: string;
+    imei: string;
+    type: TrackerEventType | string;
+    title: string;
+    message: string;
+    latitude: number | null;
+    longitude: number | null;
+    createdAt: string;
+    data?: Record<string, unknown> | null;
+};
+
+/**
+ * Eventos mais recentes primeiro. `since` (ISO): só os criados depois.
+ */
+export async function fetchTrackerEvents(
+    imei: string,
+    { limit = 50, since }: { limit?: number; since?: string } = {}
+): Promise<ApiTrackerEvent[]> {
+    const query =
+        `?limit=${limit}` +
+        (since ? `&since=${encodeURIComponent(since)}` : '');
+
+    const data = await apiFetch(
+        `/tracker/${normalizeImei(imei)}/events${query}`
+    );
+
+    return Array.isArray(data?.events) ? data.events : [];
+}
+
+// ============================================================
+// CONFIGURAÇÕES DE ALERTA
+// ============================================================
+
+export type ApiAlertSettings = {
+    speed: { enabled: boolean; limitKmh: number };
+    ignition: { enabled: boolean; start: string; end: string };
+    offline: { enabled: boolean; minutes: number };
+    powerCut: { enabled: boolean };
+};
+
+export async function fetchAlertSettings(
+    imei: string
+): Promise<ApiAlertSettings> {
+    return apiFetch(`/tracker/${normalizeImei(imei)}/settings`);
+}
+
+export async function saveAlertSettings(
+    imei: string,
+    settings: ApiAlertSettings
+): Promise<ApiAlertSettings> {
+    return apiFetch(
+        `/tracker/${normalizeImei(imei)}/settings`,
+        DEFAULT_TIMEOUT_MS,
+        { method: 'PUT', body: settings }
+    );
+}
+
+// ============================================================
+// CERCAS VIRTUAIS
+// ============================================================
+
+export type ApiGeofence = {
+    id: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    radiusMeters: number;
+    notifyEnter: boolean;
+    notifyExit: boolean;
+    createdAt?: string;
+};
+
+export type GeofenceInput = Omit<ApiGeofence, 'id' | 'createdAt'>;
+
+export async function fetchGeofences(
+    imei: string
+): Promise<ApiGeofence[]> {
+    const data = await apiFetch(
+        `/tracker/${normalizeImei(imei)}/geofences`
+    );
+
+    return Array.isArray(data?.geofences) ? data.geofences : [];
+}
+
+export async function createGeofence(
+    imei: string,
+    input: GeofenceInput
+): Promise<ApiGeofence> {
+    return apiFetch(
+        `/tracker/${normalizeImei(imei)}/geofences`,
+        DEFAULT_TIMEOUT_MS,
+        { method: 'POST', body: input }
+    );
+}
+
+export async function updateGeofence(
+    imei: string,
+    id: string,
+    input: Partial<GeofenceInput>
+): Promise<ApiGeofence> {
+    return apiFetch(
+        `/tracker/${normalizeImei(imei)}/geofences/${encodeURIComponent(id)}`,
+        DEFAULT_TIMEOUT_MS,
+        { method: 'PUT', body: input }
+    );
+}
+
+export async function deleteGeofence(
+    imei: string,
+    id: string
+): Promise<void> {
+    await apiFetch(
+        `/tracker/${normalizeImei(imei)}/geofences/${encodeURIComponent(id)}`,
+        DEFAULT_TIMEOUT_MS,
+        { method: 'DELETE' }
+    );
+}
+
+// ============================================================
+// RELATÓRIOS
+// ============================================================
+
+export type ApiReportDay = {
+    date: string;
+    distanceKm: number;
+    movingSeconds: number;
+    maxSpeed: number;
+    routes: number;
+};
+
+export type ApiReport = {
+    imei: string;
+    from: string;
+    to: string;
+    totals: {
+        distanceKm: number;
+        movingSeconds: number;
+        maxSpeed: number;
+        routes: number;
+        activeDays: number;
+    };
+    days: ApiReportDay[];
+    routes: Array<{
+        id: string;
+        startedAt: string;
+        finishedAt: string;
+        durationSeconds: number;
+        distanceKm: number;
+        maxSpeed: number;
+    }>;
+};
+
+/** Datas "AAAA-MM-DD" (horário de Brasília, inclusivas). */
+export async function fetchReport(
+    imei: string,
+    from: string,
+    to: string
+): Promise<ApiReport> {
+    return apiFetch(
+        `/tracker/${normalizeImei(imei)}/report?from=${from}&to=${to}`,
+        15000
+    );
 }

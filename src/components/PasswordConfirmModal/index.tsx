@@ -58,7 +58,8 @@ export default function PasswordConfirmModal({
         try {
             const credentials = await getCredentials();
 
-            if (password !== credentials.password) {
+            // A senha é salva sem espaços nas pontas — compara igual.
+            if (password.trim() !== credentials.password) {
                 Alert.alert('Senha incorreta', 'A senha digitada não confere.');
                 return;
             }

@@ -29,6 +29,7 @@ import {
     getCredentials,
     hasPromptedBiometric,
     setBiometricPrompted,
+    isUsingDefaultCredentials,
 } from '../../services/storage/authStorage';
 
 // Permissões pedidas logo após o login.
@@ -92,6 +93,14 @@ export default function Login({ navigation }: any) {
             }
 
             await requestAppPermissions();
+
+            // Ainda com o usuário/senha de fábrica: avisa pra trocar.
+            if (await isUsingDefaultCredentials()) {
+                Alert.alert(
+                    'Senha padrão',
+                    'Você está usando o usuário e a senha padrão (root / root). Troque em Configurações > Segurança para proteger o app.'
+                );
+            }
 
             // Após login bem-sucedido, oferecer ativar biometria se disponível —
             // mas só se ainda NÃO estiver ativada e o usuário ainda NÃO tiver

@@ -25,6 +25,8 @@ import {
 
 import type { TrackerLocation } from '../types/Tracker';
 
+import { normalizeServerDate } from '../utils/serverDate';
+
 function toTrackerLocation(
     item: ApiStoppedLocation
 ): TrackerLocation {
@@ -33,10 +35,11 @@ function toTrackerLocation(
         longitude: item.longitude,
         speed: item.velocidade,
         satellites: item.satelites,
+        // stoppedAt = quando o veículo chegou e parou nesse lugar
+        // (já em ISO); dataUTC fica como fallback.
         lastUpdate:
-            item.dataUTC ??
-            item.data ??
-            item.stoppedAt,
+            item.stoppedAt ??
+            normalizeServerDate(item.dataUTC),
     };
 }
 
@@ -50,10 +53,8 @@ function toTrackerRoute(
 
         startTime: detail.startedAt,
 
-        // Rota ainda em andamento (finishedAt null) — usa o início
-        // como fallback só pra não deixar o campo vazio; a tela de
-        // histórico não deve normalmente mostrar rotas em aberto,
-        // mas fica protegido caso apareça uma.
+        // Rotas em andamento já são filtradas antes; o fallback só
+        // protege contra um dado inesperado.
         endTime: detail.finishedAt ?? detail.startedAt,
 
         distanceKm: detail.distanceKm,
@@ -64,9 +65,8 @@ function toTrackerRoute(
             speed: point.velocidade,
             satellites: point.satelites,
             lastUpdate:
-                point.dataUTC ??
-                point.data ??
-                point.timestamp,
+                normalizeServerDate(point.dataUTC) ??
+                normalizeServerDate(point.timestamp),
         })),
     };
 }
@@ -95,11 +95,16 @@ export async function syncTrackerHistory(
     const locations = stoppedLocations.map(toTrackerLocation);
     await replaceLocationHistory(trackerId, locations);
 
-    // Busca o detalhe (com os pontos) de cada rota do resumo.
+    // Busca o detalhe (com os pontos) de cada rota já finalizada —
+    // a rota em andamento (finishedAt null) não entra no histórico.
     // Se uma rota específica falhar ao buscar, ela é ignorada em
     // vez de derrubar a sincronização inteira.
+    const finishedRoutes = routeSummaries.filter(
+        summary => summary.finishedAt
+    );
+
     const routeDetails = await Promise.all(
-        routeSummaries.map(summary =>
+        finishedRoutes.map(summary =>
             fetchRouteDetail(imei, summary.id).catch(error => {
                 console.warn(
                     `Erro ao buscar detalhe da rota ${summary.id}:`,
