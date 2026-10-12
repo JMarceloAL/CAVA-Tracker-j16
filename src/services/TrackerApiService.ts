@@ -13,6 +13,11 @@ const API_KEY = process.env.EXPO_PUBLIC_API_KEY;
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
+/** Endereço do servidor e se há chave de API configurada (tela Configurações). */
+export function getServerInfo(): { url: string; hasApiKey: boolean } {
+    return { url: API_URL, hasApiKey: !!API_KEY };
+}
+
 export function normalizeImei(imei: string): string {
     const digits = String(imei).replace(/\D/g, '');
 
@@ -130,7 +135,48 @@ export type ApiDeviceStatus = {
     defense?: boolean;
     voltageLevel?: number;
     gsmLevel?: number;
+    /** Descrições do servidor para voltageLevel / gsmLevel. */
+    voltageText?: string;
+    gsmText?: string;
+    /** Bateria interna (resposta do STATUS#, a cada ~30 min). */
+    batteryVolts?: number;
+    batteryPercent?: number;
+    batteryOnly?: boolean;
+    batteryUpdatedAt?: string;
+    /** Sinal pelo STATUS#: CSQ 0-31 (manual) ou texto (J16: "strong"). */
+    gsmSignal?: number;
+    gsmSignalText?: string;
+    /** Tensão da alimentação externa (veículo), em volts (pacote 0x94). */
+    externalVoltage?: number;
     updatedAt?: string;
+};
+
+/** Alarme configurado no aparelho (resposta de SENALM#, POWERALM#...). */
+export type ApiDeviceAlarmConfig = {
+    ligado: boolean;
+    modo?: number | null;
+    modoTexto?: string | null;
+    atualizadoEm?: string;
+};
+
+/**
+ * Configuração lida do PRÓPRIO rastreador pelo servidor (respostas dos
+ * comandos PARAM#, TIMER#, SENALM#...). Campos ausentes = ainda não lidos.
+ */
+export type ApiDeviceConfig = {
+    timer?: { accOnSeg: number; accOffSeg: number };
+    hbt?: { accOnSeg: number; accOffMin: number };
+    vibracao?: ApiDeviceAlarmConfig;
+    corteEnergia?: ApiDeviceAlarmConfig & { deteccaoSeg?: number | null; recargaSeg?: number | null };
+    bateriaBaixa?: ApiDeviceAlarmConfig;
+    deslocamento?: ApiDeviceAlarmConfig & { raioM?: number | null };
+    excessoVelocidade?: ApiDeviceAlarmConfig & { limiteKmh?: number | null; tempoSeg?: number | null };
+    rele?: { cortado: boolean };
+    fusoSms?: { texto: string; minutos: number };
+    telefones?: { sos: number; center: number };
+    chip?: { imsi?: string; iccid?: string };
+    lidoDoAparelhoEm?: string;
+    atualizadoEm?: string;
 };
 
 export type ApiTracker = {
@@ -139,6 +185,7 @@ export type ApiTracker = {
     lastSeen: string | null;
     gps: ApiGps | null;
     deviceStatus?: ApiDeviceStatus;
+    deviceConfig?: ApiDeviceConfig;
     heartbeat: {
         status: number;
         serial: string;
@@ -483,7 +530,13 @@ export type TrackerEventType =
     | 'POWER_CUT'
     | 'GEOFENCE_ENTER'
     | 'GEOFENCE_EXIT'
-    | 'ALARM';
+    | 'ALARM'
+    // configuração do aparelho atrapalha o servidor (vibração desligada...)
+    | 'DEVICE_CONFIG'
+    // relógio/fuso do rastreador errado
+    | 'CLOCK_OFFSET'
+    // bloqueio/desbloqueio enviado pelo servidor
+    | 'COMMAND';
 
 export type ApiTrackerEvent = {
     id: string;
@@ -648,4 +701,34 @@ export async function fetchReport(
         `/tracker/${normalizeImei(imei)}/report?from=${from}&to=${to}`,
         15000
     );
+}
+
+// ============================================================
+// TRAJETO DO DIA (todas as posições)
+// ============================================================
+
+/**
+ * Posição do histórico completo do servidor. `atrasado`: chegou depois
+ * (buffer do rastreador ao voltar o sinal) — não foi para o tempo real,
+ * mas faz parte do trajeto.
+ */
+export type ApiDayPosition = ApiGps & {
+    timestamp: string;
+    atrasado: boolean;
+};
+
+/**
+ * Todas as posições de um dia ("AAAA-MM-DD", horário de Brasília), em
+ * ordem de horário.
+ */
+export async function fetchDayPositions(
+    imei: string,
+    date: string
+): Promise<ApiDayPosition[]> {
+    const data = await apiFetch(
+        `/tracker/${normalizeImei(imei)}/positions?date=${date}`,
+        20000
+    );
+
+    return Array.isArray(data?.positions) ? data.positions : [];
 }

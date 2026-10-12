@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 
 import {
     View,
@@ -6,6 +6,7 @@ import {
     TouchableOpacity,
     FlatList,
     ActivityIndicator,
+    type LayoutRectangle,
 } from 'react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,6 +14,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { MaterialIcons } from '@expo/vector-icons';
+
+import { DropdownPanel, RotatingChevron } from '../../components/AnimatedDropdown';
 
 import { getLocationHistory } from '../../services/storage/LastlocationStorage';
 
@@ -27,9 +30,19 @@ import { normalizeServerDate } from '../../utils/serverDate';
 import { eventAppearance } from '../../utils/trackerEvents';
 
 import {
+    fetchDayPositions,
     fetchTrackerEvents,
+    type ApiDayPosition,
     type ApiTrackerEvent,
 } from '../../services/TrackerApiService';
+
+import {
+    formatDayLabel,
+    shiftDay,
+    summarizeDay,
+    toMapPoints,
+    todayKey,
+} from '../../utils/dayTrack';
 
 import type {
     Tracker,
@@ -44,7 +57,7 @@ import { styles } from './styles';
 
 const STORAGE_KEY = '@cavalleta:trackers';
 
-type TabKey = 'locations' | 'routes' | 'alerts';
+type TabKey = 'locations' | 'routes' | 'day' | 'alerts';
 
 export default function History({ navigation }: any) {
 
@@ -64,6 +77,10 @@ export default function History({ navigation }: any) {
 
     const [dropdownOpen, setDropdownOpen] =
         useState(false);
+
+    // Posição do seletor, para a lista abrir logo abaixo dele.
+    const [dropdownFrame, setDropdownFrame] =
+        useState<LayoutRectangle | null>(null);
 
     const [selectedTracker, setSelectedTracker] =
         useState<Tracker | null>(null);
@@ -91,6 +108,19 @@ export default function History({ navigation }: any) {
     // servidor (API fora do ar) ou quando o rastreador não tem
     // IMEI cadastrado (nesses casos os dados vêm só do cache local).
     const [syncError, setSyncError] =
+        useState<string | null>(null);
+
+    // Trajeto do dia: todas as posições de um dia, do servidor.
+    const [dayKey, setDayKey] =
+        useState<string>(todayKey());
+
+    const [dayPositions, setDayPositions] =
+        useState<ApiDayPosition[]>([]);
+
+    const [dayLoading, setDayLoading] =
+        useState(false);
+
+    const [dayError, setDayError] =
         useState<string | null>(null);
 
     // ============================================================
@@ -307,6 +337,78 @@ export default function History({ navigation }: any) {
     }
 
     // ============================================================
+    // TRAJETO DO DIA
+    // ============================================================
+    //
+    // Carrega quando a aba "Dia" está aberta, e de novo ao trocar de
+    // rastreador ou de dia.
+    //
+
+    useEffect(() => {
+        const imei = selectedTracker?.imei;
+
+        if (activeTab !== 'day' || !imei) {
+            return;
+        }
+
+        let cancelled = false;
+
+        setDayLoading(true);
+        setDayError(null);
+        setDayPositions([]);
+
+        fetchDayPositions(imei, dayKey)
+            .then(points => {
+                if (!cancelled) {
+                    setDayPositions(points);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setDayError('Não foi possível carregar o trajeto do servidor.');
+                }
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setDayLoading(false);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [activeTab, dayKey, selectedTracker?.imei]);
+
+    function handleShowDayOnMap() {
+        if (!selectedTracker || dayPositions.length < 2) {
+            return;
+        }
+
+        navigation.navigate(
+            'MapScreen',
+            {
+                trackerId:
+                    selectedTracker.id,
+
+                routePoints:
+                    toMapPoints(dayPositions),
+            }
+        );
+    }
+
+    function formatTime(value: string | null) {
+        if (!value) {
+            return '—';
+        }
+
+        const date = new Date(value);
+
+        return isNaN(date.getTime())
+            ? value
+            : date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // ============================================================
     // ABRIR LOCALIZAÇÃO NO MAPA
     // ============================================================
 
@@ -421,6 +523,122 @@ export default function History({ navigation }: any) {
     }
 
     // ============================================================
+    // ABA "DIA"
+    // ============================================================
+
+    function renderDayTab() {
+        if (!selectedTracker?.imei) {
+            return (
+                <Text style={emptyTextStyle}>
+                    Este rastreador não tem IMEI cadastrado — o trajeto vem do servidor.
+                </Text>
+            );
+        }
+
+        const summary = summarizeDay(dayPositions);
+        const isToday = dayKey === todayKey();
+
+        const statStyle = [styles.dayStatValue, { color: colors.text }];
+        const statLabelStyle = [styles.dayStatLabel, { color: colors.textMuted }];
+
+        return (
+            <View>
+                {/* Navegação entre os dias */}
+                <View style={styles.dayNav}>
+                    <TouchableOpacity
+                        style={[styles.dayNavButton, { borderColor: colors.border, backgroundColor: colors.surfaceAlt }]}
+                        onPress={() => setDayKey(prev => shiftDay(prev, -1))}
+                        accessibilityLabel="Dia anterior"
+                    >
+                        <MaterialIcons name="chevron-left" size={22} color={colors.text} />
+                    </TouchableOpacity>
+
+                    <View style={styles.dayNavLabelGroup}>
+                        <Text style={[styles.dayNavLabel, { color: colors.text }]}>
+                            {formatDayLabel(dayKey)}
+                        </Text>
+                        <Text style={[styles.dayNavSub, { color: colors.textMuted }]}>
+                            {dayKey.split('-').reverse().join('/')}
+                        </Text>
+                    </View>
+
+                    <TouchableOpacity
+                        style={[
+                            styles.dayNavButton,
+                            { borderColor: colors.border, backgroundColor: colors.surfaceAlt },
+                            isToday && styles.dayNavButtonDisabled,
+                        ]}
+                        onPress={() => setDayKey(prev => shiftDay(prev, 1))}
+                        disabled={isToday}
+                        accessibilityLabel="Próximo dia"
+                    >
+                        <MaterialIcons name="chevron-right" size={22} color={colors.text} />
+                    </TouchableOpacity>
+                </View>
+
+                {dayLoading ? (
+                    <ActivityIndicator
+                        style={{ marginTop: 20 }}
+                        color={isDark ? colors.primary : undefined}
+                    />
+                ) : dayError ? (
+                    <Text style={emptyTextStyle}>{dayError}</Text>
+                ) : summary.total === 0 ? (
+                    <Text style={emptyTextStyle}>
+                        Nenhuma posição registrada neste dia.
+                    </Text>
+                ) : (
+                    <>
+                        <View style={styles.dayStats}>
+                            <View style={[styles.dayStat, { borderColor: colors.border }]}>
+                                <Text style={statStyle}>
+                                    {summary.distanceKm.toFixed(1).replace('.', ',')} km
+                                </Text>
+                                <Text style={statLabelStyle}>percorridos</Text>
+                            </View>
+
+                            <View style={[styles.dayStat, { borderColor: colors.border }]}>
+                                <Text style={statStyle}>{summary.maxSpeed} km/h</Text>
+                                <Text style={statLabelStyle}>velocidade máx.</Text>
+                            </View>
+
+                            <View style={[styles.dayStat, { borderColor: colors.border }]}>
+                                <Text style={statStyle}>
+                                    {formatTime(summary.firstAt)}–{formatTime(summary.lastAt)}
+                                </Text>
+                                <Text style={statLabelStyle}>primeira e última</Text>
+                            </View>
+                        </View>
+
+                        <Text style={[styles.dayNote, { color: colors.textMuted }]}>
+                            {summary.total} posições
+                            {summary.late > 0
+                                ? ` · ${summary.late} chegaram atrasadas (sem sinal na hora) e preenchem o trajeto`
+                                : ''}
+                        </Text>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.dayMapButton,
+                                { backgroundColor: colors.primary },
+                                summary.total < 2 && { opacity: 0.5 },
+                            ]}
+                            onPress={handleShowDayOnMap}
+                            disabled={summary.total < 2}
+                            activeOpacity={0.85}
+                        >
+                            <MaterialIcons name="map" size={18} color={colors.buttonText} />
+                            <Text style={[styles.dayMapButtonText, { color: colors.buttonText }]}>
+                                Ver trajeto no mapa
+                            </Text>
+                        </TouchableOpacity>
+                    </>
+                )}
+            </View>
+        );
+    }
+
+    // ============================================================
     // RENDER
     // ============================================================
 
@@ -439,7 +657,14 @@ export default function History({ navigation }: any) {
             {/* DROPDOWN */}
             {/* ================================================== */}
 
-            <View style={styles.dropdownContainer}>
+            <View
+                style={styles.dropdownContainer}
+                onLayout={event =>
+                    setDropdownFrame(
+                        event.nativeEvent.layout
+                    )
+                }
+            >
 
                 <TouchableOpacity
                     style={dropdownHeaderStyle}
@@ -461,89 +686,13 @@ export default function History({ navigation }: any) {
                             : 'Selecione um rastreador'}
                     </Text>
 
-                    <Text
-                        style={chevronStyle}
-                    >
-                        {dropdownOpen
-                            ? '▲'
-                            : '▼'}
-                    </Text>
+                    <RotatingChevron open={dropdownOpen}>
+                        <Text style={chevronStyle}>
+                            ▼
+                        </Text>
+                    </RotatingChevron>
 
                 </TouchableOpacity>
-
-                {dropdownOpen && (
-
-                    <View
-                        style={
-                            dropdownListStyle
-                        }
-                    >
-
-                        <FlatList
-                            data={trackers}
-                            keyExtractor={
-                                item => item.id
-                            }
-                            style={{
-                                maxHeight: 220,
-                            }}
-                            ListEmptyComponent={
-
-                                <Text
-                                    style={
-                                        emptyTextStyle
-                                    }
-                                >
-                                    Nenhum rastreador
-                                    cadastrado.
-                                </Text>
-
-                            }
-                            renderItem={({
-                                item,
-                            }) => (
-
-                                <TouchableOpacity
-                                    style={[
-                                        styles.dropdownItem,
-                                        isDark &&
-                                        styles.darkDropdownItem,
-                                    ]}
-                                    onPress={() =>
-                                        handleSelectTracker(
-                                            item
-                                        )
-                                    }
-                                >
-
-                                    <Text
-                                        style={[
-                                            styles.dropdownItemText,
-                                            isDark &&
-                                            styles.darkDropdownItemText,
-                                        ]}
-                                    >
-                                        {item.name}
-                                    </Text>
-
-                                    <Text
-                                        style={[
-                                            styles.dropdownItemSubtext,
-                                            isDark &&
-                                            styles.darkDropdownItemSubtext,
-                                        ]}
-                                    >
-                                        {item.phone}
-                                    </Text>
-
-                                </TouchableOpacity>
-
-                            )}
-                        />
-
-                    </View>
-
-                )}
 
             </View>
 
@@ -595,11 +744,14 @@ export default function History({ navigation }: any) {
                         >
                             <MaterialIcons
                                 name="place"
-                                size={16}
+                                size={20}
                                 color={activeTab === 'locations' ? '#FFFFFF' : colors.textMuted}
                             />
 
                             <Text
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.8}
                                 style={[
                                     styles.tabButtonText,
                                     { color: activeTab === 'locations' ? '#FFFFFF' : colors.textMuted },
@@ -622,11 +774,14 @@ export default function History({ navigation }: any) {
                         >
                             <MaterialIcons
                                 name="alt-route"
-                                size={16}
+                                size={20}
                                 color={activeTab === 'routes' ? '#FFFFFF' : colors.textMuted}
                             />
 
                             <Text
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.8}
                                 style={[
                                     styles.tabButtonText,
                                     { color: activeTab === 'routes' ? '#FFFFFF' : colors.textMuted },
@@ -642,6 +797,36 @@ export default function History({ navigation }: any) {
                             style={[
                                 styles.tabButton,
                                 isDark && styles.darkTabButton,
+                                activeTab === 'day' && styles.tabButtonActive,
+                                activeTab === 'day' && { backgroundColor: colors.primary, borderColor: colors.primary },
+                            ]}
+                            onPress={() => setActiveTab('day')}
+                        >
+                            <MaterialIcons
+                                name="today"
+                                size={20}
+                                color={activeTab === 'day' ? '#FFFFFF' : colors.textMuted}
+                            />
+
+                            <Text
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.8}
+                                style={[
+                                    styles.tabButtonText,
+                                    { color: activeTab === 'day' ? '#FFFFFF' : colors.textMuted },
+                                    isDark && styles.darkTabButtonText,
+                                    activeTab === 'day' && styles.tabButtonTextActive,
+                                ]}
+                            >
+                                Dia
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.tabButton,
+                                isDark && styles.darkTabButton,
                                 activeTab === 'alerts' && styles.tabButtonActive,
                                 activeTab === 'alerts' && { backgroundColor: colors.primary, borderColor: colors.primary },
                             ]}
@@ -649,11 +834,14 @@ export default function History({ navigation }: any) {
                         >
                             <MaterialIcons
                                 name="notifications"
-                                size={16}
+                                size={20}
                                 color={activeTab === 'alerts' ? '#FFFFFF' : colors.textMuted}
                             />
 
                             <Text
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.8}
                                 style={[
                                     styles.tabButtonText,
                                     { color: activeTab === 'alerts' ? '#FFFFFF' : colors.textMuted },
@@ -674,7 +862,9 @@ export default function History({ navigation }: any) {
                                         ? 'folder-open'
                                         : activeTab === 'alerts'
                                             ? 'notifications'
-                                            : 'alt-route'
+                                            : activeTab === 'day'
+                                                ? 'today'
+                                                : 'alt-route'
                                 }
                                 size={20}
                                 color={colors.primary}
@@ -685,7 +875,9 @@ export default function History({ navigation }: any) {
                                     ? `Últimas localizações — ${selectedTracker.name}`
                                     : activeTab === 'alerts'
                                         ? `Alertas e alarmes — ${selectedTracker.name}`
-                                        : `Rotas percorridas — ${selectedTracker.name}`}
+                                        : activeTab === 'day'
+                                            ? `Trajeto do dia — ${selectedTracker.name}`
+                                            : `Rotas percorridas — ${selectedTracker.name}`}
                             </Text>
                         </View>
 
@@ -772,6 +964,8 @@ export default function History({ navigation }: any) {
                                     )}
                                 />
                             )
+                        ) : activeTab === 'day' ? (
+                            renderDayTab()
                         ) : activeTab === 'alerts' ? (
                             eventsError || !selectedTracker.imei ? (
                                 <Text style={emptyTextStyle}>
@@ -921,6 +1115,92 @@ export default function History({ navigation }: any) {
                         )}
                     </View>
                 </>
+            )}
+
+            {/* ================================================== */}
+            {/* LISTA DO DROPDOWN — fica por último e absoluta para */}
+            {/* sobrepor o conteúdo em vez de empurrá-lo para baixo */}
+            {/* ================================================== */}
+
+            {dropdownFrame && (
+
+                <DropdownPanel
+                    open={dropdownOpen}
+                    style={[
+                        dropdownListStyle,
+                        styles.dropdownListFloating,
+                        {
+                            top: dropdownFrame.y + dropdownFrame.height + 4,
+                            left: dropdownFrame.x,
+                            width: dropdownFrame.width,
+                        },
+                    ]}
+                >
+
+                    <FlatList
+                        data={trackers}
+                        keyExtractor={
+                            item => item.id
+                        }
+                        style={{
+                            maxHeight: 220,
+                        }}
+                        ListEmptyComponent={
+
+                            <Text
+                                style={
+                                    emptyTextStyle
+                                }
+                            >
+                                Nenhum rastreador
+                                cadastrado.
+                            </Text>
+
+                        }
+                        renderItem={({
+                            item,
+                        }) => (
+
+                            <TouchableOpacity
+                                style={[
+                                    styles.dropdownItem,
+                                    isDark &&
+                                    styles.darkDropdownItem,
+                                ]}
+                                onPress={() =>
+                                    handleSelectTracker(
+                                        item
+                                    )
+                                }
+                            >
+
+                                <Text
+                                    style={[
+                                        styles.dropdownItemText,
+                                        isDark &&
+                                        styles.darkDropdownItemText,
+                                    ]}
+                                >
+                                    {item.name}
+                                </Text>
+
+                                <Text
+                                    style={[
+                                        styles.dropdownItemSubtext,
+                                        isDark &&
+                                        styles.darkDropdownItemSubtext,
+                                    ]}
+                                >
+                                    {item.phone}
+                                </Text>
+
+                            </TouchableOpacity>
+
+                        )}
+                    />
+
+                </DropdownPanel>
+
             )}
         </View>
     );

@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, FlatList } from 'react-native';
 import type { Tracker } from '../../types/Tracker';
 import { useTheme } from '../../contexts/ThemeContext';
+import { DropdownPanel, RotatingChevron } from '../AnimatedDropdown';
 import { styles } from './styles';
 
 
@@ -31,33 +32,33 @@ export default function TrackerDropdown({ trackers, selectedTracker, onSelect }:
                 <Text style={headerTextStyle} numberOfLines={1}>
                     {selectedTracker ? selectedTracker.name : 'Selecione um rastreador'}
                 </Text>
-                <Text style={chevronStyle}>{open ? '▲' : '▼'}</Text>
+                <RotatingChevron open={open}>
+                    <Text style={chevronStyle}>▼</Text>
+                </RotatingChevron>
             </TouchableOpacity>
 
-            {open && (
-                <View style={listStyle}>
-                    <FlatList
-                        data={trackers}
-                        keyExtractor={item => item.id}
-                        style={{ maxHeight: 220 }}
-                        ListEmptyComponent={
-                            <Text style={emptyTextStyle}>Nenhum rastreador cadastrado.</Text>
-                        }
-                        renderItem={({ item }) => (
-                            <TouchableOpacity
-                                style={itemStyle}
-                                onPress={() => {
-                                    onSelect(item);
-                                    setOpen(false);
-                                }}
-                            >
-                                <Text style={itemTextStyle}>{item.name}</Text>
-                                <Text style={itemSubtextStyle}>{item.phone}</Text>
-                            </TouchableOpacity>
-                        )}
-                    />
-                </View>
-            )}
+            <DropdownPanel open={open} style={listStyle}>
+                <FlatList
+                    data={trackers}
+                    keyExtractor={item => item.id}
+                    style={{ maxHeight: 220 }}
+                    ListEmptyComponent={
+                        <Text style={emptyTextStyle}>Nenhum rastreador cadastrado.</Text>
+                    }
+                    renderItem={({ item }) => (
+                        <TouchableOpacity
+                            style={itemStyle}
+                            onPress={() => {
+                                onSelect(item);
+                                setOpen(false);
+                            }}
+                        >
+                            <Text style={itemTextStyle}>{item.name}</Text>
+                            <Text style={itemSubtextStyle}>{item.phone}</Text>
+                        </TouchableOpacity>
+                    )}
+                />
+            </DropdownPanel>
         </View>
     );
 }

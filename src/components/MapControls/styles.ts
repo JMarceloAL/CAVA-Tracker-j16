@@ -105,6 +105,46 @@ export const styles = StyleSheet.create({
         right: 126,
     },
 
+    // ============================================================
+    // VIAGEM — faixa logo abaixo dos switches (que ficam em
+    // bottom 615, altura 46): 615 - 8 de espaço - 36 de altura.
+    // ============================================================
+    tripBar: {
+        height: 36,
+        borderRadius: 18,
+        borderWidth: 1,
+        paddingHorizontal: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOpacity: 0.08,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+        position: 'absolute',
+        bottom: 571,
+        right: 10,
+    },
+    tripDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginRight: 6,
+    },
+    tripStatus: {
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    tripDivider: {
+        width: 1,
+        height: 18,
+        marginHorizontal: 10,
+    },
+    tripValue: {
+        fontSize: 15,
+        fontWeight: 'bold',
+    },
+
     signalIcon: {
         marginRight: 6,
     },

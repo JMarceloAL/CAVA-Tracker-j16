@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import Collapsible from '../Collapsible';
+import { RotatingChevron } from '../AnimatedDropdown';
 import { styles } from './styles';
 type Props = {
     title: string;
@@ -22,7 +23,9 @@ export default function CollapsibleSection({ title, children, defaultOpen = fals
                 activeOpacity={0.8}
             >
                 <Text style={[styles.headerText, { color: colors.text }]}>{title}</Text>
-                <Text style={[styles.chevron, { color: colors.textMuted }]}>{open ? '▲' : '▼'}</Text>
+                <RotatingChevron open={open}>
+                    <Text style={[styles.chevron, { color: colors.textMuted }]}>▼</Text>
+                </RotatingChevron>
             </TouchableOpacity>
 
             <Collapsible open={open}>

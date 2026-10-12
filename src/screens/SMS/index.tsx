@@ -12,6 +12,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import TrackerDropdown from '../../components/TrackerDropdown';
+import { RotatingChevron } from '../../components/AnimatedDropdown';
 import ParamCommandModal from '../../components/ParamCommandModal';
 import PasswordConfirmModal from '../../components/PasswordConfirmModal';
 import CollapsibleSection from '../../components/CollapsibleSection';
@@ -341,14 +342,16 @@ export default function SmsScreen() {
                             />
                         </View>
 
-                        <Text
-                            style={[
-                                styles.protectedSectionChevron,
-                                { color: colors.textMuted },
-                            ]}
-                        >
-                            {parametrosOpen ? '▲' : '▼'}
-                        </Text>
+                        <RotatingChevron open={parametrosOpen}>
+                            <Text
+                                style={[
+                                    styles.protectedSectionChevron,
+                                    { color: colors.textMuted },
+                                ]}
+                            >
+                                ▼
+                            </Text>
+                        </RotatingChevron>
                     </TouchableOpacity>
 
                     <Collapsible open={parametrosOpen}>

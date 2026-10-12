@@ -323,112 +323,116 @@ export default function ReportsScreen() {
                 <ScreenHeader title="Relatórios" />
             </View>
 
-            <TrackerDropdown
-                trackers={trackers}
-                selectedTracker={selectedTracker}
-                onSelect={selectTracker}
-            />
+            {/* O dropdown é absoluto: fica preso a esta área, abaixo do cabeçalho,
+                e o conteúdo reserva espaço para ele (paddingTop). */}
+            <View style={{ flex: 1 }}>
+                <TrackerDropdown
+                    trackers={trackers}
+                    selectedTracker={selectedTracker}
+                    onSelect={selectTracker}
+                />
 
-            <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-                {/* Período */}
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-                    {PERIODS.map(item => {
-                        const selected = item.key === period;
+                <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 72, paddingBottom: 40 }}>
+                    {/* Período */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                        {PERIODS.map(item => {
+                            const selected = item.key === period;
 
-                        return (
-                            <TouchableOpacity
-                                key={item.key}
-                                onPress={() => setPeriod(item.key)}
-                                style={{
-                                    paddingHorizontal: 14,
-                                    paddingVertical: 7,
-                                    borderRadius: 16,
-                                    borderWidth: 1,
-                                    borderColor: selected ? colors.primary : colors.border,
-                                    backgroundColor: selected ? colors.primary : colors.surface,
-                                }}
-                            >
-                                <Text style={{ color: selected ? '#FFF' : colors.text, fontWeight: '600' }}>
-                                    {item.label}
-                                </Text>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
-
-                {!selectedTracker ? (
-                    <Text style={mutedStyle}>Cadastre ou selecione um rastreador.</Text>
-                ) : !imei ? (
-                    <Text style={mutedStyle}>Este rastreador não tem IMEI cadastrado — os relatórios vêm do servidor.</Text>
-                ) : loading ? (
-                    <ActivityIndicator style={{ marginTop: 24 }} color={colors.primary} />
-                ) : error || !report ? (
-                    <View style={{ alignItems: 'center', marginTop: 24 }}>
-                        <Text style={[mutedStyle, { textAlign: 'center' }]}>{error ?? 'Sem dados.'}</Text>
-                        <TouchableOpacity onPress={() => void load()} style={{ marginTop: 12 }}>
-                            <Text style={{ color: colors.primary, fontWeight: '700' }}>Tentar novamente</Text>
-                        </TouchableOpacity>
+                            return (
+                                <TouchableOpacity
+                                    key={item.key}
+                                    onPress={() => setPeriod(item.key)}
+                                    style={{
+                                        paddingHorizontal: 14,
+                                        paddingVertical: 7,
+                                        borderRadius: 16,
+                                        borderWidth: 1,
+                                        borderColor: selected ? colors.primary : colors.border,
+                                        backgroundColor: selected ? colors.primary : colors.surface,
+                                    }}
+                                >
+                                    <Text style={{ color: selected ? '#FFF' : colors.text, fontWeight: '600' }}>
+                                        {item.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        })}
                     </View>
-                ) : (
-                    <>
-                        <Text style={[mutedStyle, { marginBottom: 10 }]}>
-                            {formatDay(report.from, true)} a {formatDay(report.to, true)}
-                            {' · '}
-                            {report.totals.activeDays} {report.totals.activeDays === 1 ? 'dia com uso' : 'dias com uso'}
-                        </Text>
 
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-                            {totalCard('route', formatKm(report.totals.distanceKm), 'Distância percorrida')}
-                            {totalCard('timer', formatDuration(report.totals.movingSeconds), 'Tempo em movimento')}
-                            {totalCard('speed', `${report.totals.maxSpeed} km/h`, 'Velocidade máxima')}
-                            {totalCard('alt-route', String(report.totals.routes), 'Rotas')}
+                    {!selectedTracker ? (
+                        <Text style={mutedStyle}>Cadastre ou selecione um rastreador.</Text>
+                    ) : !imei ? (
+                        <Text style={mutedStyle}>Este rastreador não tem IMEI cadastrado — os relatórios vêm do servidor.</Text>
+                    ) : loading ? (
+                        <ActivityIndicator style={{ marginTop: 24 }} color={colors.primary} />
+                    ) : error || !report ? (
+                        <View style={{ alignItems: 'center', marginTop: 24 }}>
+                            <Text style={[mutedStyle, { textAlign: 'center' }]}>{error ?? 'Sem dados.'}</Text>
+                            <TouchableOpacity onPress={() => void load()} style={{ marginTop: 12 }}>
+                                <Text style={{ color: colors.primary, fontWeight: '700' }}>Tentar novamente</Text>
+                            </TouchableOpacity>
                         </View>
-
-                        <View style={{ flexDirection: 'row', gap: 10, marginVertical: 12 }}>
-                            {exportButton('csv', 'Exportar CSV', 'table-chart', () => void handleExportCsv())}
-                            {exportButton('pdf', 'Exportar PDF', 'picture-as-pdf', () => void handleExportPdf())}
-                        </View>
-
-                        {/* Por dia (mais recente primeiro) */}
-                        <View style={cardStyle}>
-                            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, marginBottom: 8 }}>
-                                Por dia
+                    ) : (
+                        <>
+                            <Text style={[mutedStyle, { marginBottom: 10 }]}>
+                                {formatDay(report.from, true)} a {formatDay(report.to, true)}
+                                {' · '}
+                                {report.totals.activeDays} {report.totals.activeDays === 1 ? 'dia com uso' : 'dias com uso'}
                             </Text>
 
-                            {[...report.days].reverse().map(day => (
-                                <View key={day.date} style={{ paddingVertical: 7 }}>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                        <Text style={{ color: day.routes ? colors.text : colors.textMuted }}>
-                                            {formatDay(day.date)} ({weekday(day.date)})
-                                        </Text>
-                                        <Text style={{ color: day.routes ? colors.text : colors.textMuted, fontWeight: '600' }}>
-                                            {day.routes ? formatKm(day.distanceKm) : '—'}
-                                        </Text>
-                                    </View>
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                                {totalCard('route', formatKm(report.totals.distanceKm), 'Distância percorrida')}
+                                {totalCard('timer', formatDuration(report.totals.movingSeconds), 'Tempo em movimento')}
+                                {totalCard('speed', `${report.totals.maxSpeed} km/h`, 'Velocidade máxima')}
+                                {totalCard('alt-route', String(report.totals.routes), 'Rotas')}
+                            </View>
 
-                                    {day.routes > 0 && (
-                                        <>
-                                            <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, marginTop: 4 }}>
-                                                <View
-                                                    style={{
-                                                        height: 6,
-                                                        borderRadius: 3,
-                                                        backgroundColor: colors.primary,
-                                                        width: `${Math.max(3, (day.distanceKm / maxDayKm) * 100)}%`,
-                                                    }}
-                                                />
-                                            </View>
-                                            <Text style={[mutedStyle, { marginTop: 3 }]}>
-                                                {formatDuration(day.movingSeconds)} em movimento · máx {day.maxSpeed} km/h · {day.routes} {day.routes === 1 ? 'rota' : 'rotas'}
+                            <View style={{ flexDirection: 'row', gap: 10, marginVertical: 12 }}>
+                                {exportButton('csv', 'Exportar CSV', 'table-chart', () => void handleExportCsv())}
+                                {exportButton('pdf', 'Exportar PDF', 'picture-as-pdf', () => void handleExportPdf())}
+                            </View>
+
+                            {/* Por dia (mais recente primeiro) */}
+                            <View style={cardStyle}>
+                                <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, marginBottom: 8 }}>
+                                    Por dia
+                                </Text>
+
+                                {[...report.days].reverse().map(day => (
+                                    <View key={day.date} style={{ paddingVertical: 7 }}>
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                            <Text style={{ color: day.routes ? colors.text : colors.textMuted }}>
+                                                {formatDay(day.date)} ({weekday(day.date)})
                                             </Text>
-                                        </>
-                                    )}
-                                </View>
-                            ))}
-                        </View>
-                    </>
-                )}
-            </ScrollView>
+                                            <Text style={{ color: day.routes ? colors.text : colors.textMuted, fontWeight: '600' }}>
+                                                {day.routes ? formatKm(day.distanceKm) : '—'}
+                                            </Text>
+                                        </View>
+
+                                        {day.routes > 0 && (
+                                            <>
+                                                <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, marginTop: 4 }}>
+                                                    <View
+                                                        style={{
+                                                            height: 6,
+                                                            borderRadius: 3,
+                                                            backgroundColor: colors.primary,
+                                                            width: `${Math.max(3, (day.distanceKm / maxDayKm) * 100)}%`,
+                                                        }}
+                                                    />
+                                                </View>
+                                                <Text style={[mutedStyle, { marginTop: 3 }]}>
+                                                    {formatDuration(day.movingSeconds)} em movimento · máx {day.maxSpeed} km/h · {day.routes} {day.routes === 1 ? 'rota' : 'rotas'}
+                                                </Text>
+                                            </>
+                                        )}
+                                    </View>
+                                ))}
+                            </View>
+                        </>
+                    )}
+                </ScrollView>
+            </View>
         </SafeAreaView>
     );
 }

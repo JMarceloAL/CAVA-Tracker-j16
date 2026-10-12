@@ -13,6 +13,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { styles } from './styles';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getCredentials } from '../../services/storage/authStorage';
+import { PopIn } from '../Motion';
 
 type Props = {
     visible: boolean;
@@ -87,9 +88,9 @@ export default function PasswordConfirmModal({
     const primaryButtonStyle = [styles.primaryButton, { backgroundColor: colors.primary }];
 
     return (
-        <Modal visible={visible} transparent animationType="fade">
+        <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
             <View style={styles.overlay}>
-                <View style={containerStyle}>
+                <PopIn variant="dialog" style={containerStyle}>
                     <View style={iconCircleStyle}>
                         <MaterialIcons
                             name="lock-outline"
@@ -130,7 +131,7 @@ export default function PasswordConfirmModal({
                     >
                         <Text style={cancelTextStyle}>Cancelar</Text>
                     </TouchableOpacity>
-                </View>
+                </PopIn>
             </View>
         </Modal>
     );

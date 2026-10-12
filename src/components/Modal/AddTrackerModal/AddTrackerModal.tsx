@@ -14,6 +14,7 @@ import { styles } from './styles';
 import { normalizeToE164 } from '../../../utils/phone';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { APP_GREEN } from '../../../theme/colors';
+import { PopIn } from '../../Motion';
 
 interface Props {
 
@@ -123,11 +124,11 @@ export default function AddTrackerModal({
 
     return (
 
-        <Modal visible={visible} transparent animationType="slide">
+        <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
 
             <View style={styles.overlay}>
 
-                <View style={containerStyle}>
+                <PopIn variant="dialog" style={containerStyle}>
                     {loading ? (
                         <View style={styles.loadingContainer}>
                             <ActivityIndicator size="large" color={isDark ? '#F3F4F6' : colors.primary} />
@@ -181,7 +182,7 @@ export default function AddTrackerModal({
                             </TouchableOpacity>
                         </>
                     )}
-                </View>
+                </PopIn>
 
             </View>
 

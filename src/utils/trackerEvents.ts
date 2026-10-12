@@ -4,6 +4,8 @@
 // itens do painel de status, compartilhada entre as telas.
 
 import type {
+    ApiDeviceConfig,
+    ApiDeviceAlarmConfig,
     ApiDeviceStatus,
     ApiTrackerEvent,
 } from '../services/TrackerApiService';
@@ -23,6 +25,16 @@ const EVENT_APPEARANCE: Record<string, EventAppearance> = {
     GEOFENCE_ENTER: { icon: 'login', color: '#2980B9', label: 'Cerca' },
     GEOFENCE_EXIT: { icon: 'logout', color: '#8E44AD', label: 'Cerca' },
     ALARM: { icon: 'notifications-active', color: '#D35400', label: 'Alarme' },
+    DEVICE_CONFIG: { icon: 'settings', color: '#E67E22', label: 'Configuração' },
+    CLOCK_OFFSET: { icon: 'schedule', color: '#C0392B', label: 'Relógio' },
+    COMMAND: { icon: 'send', color: '#2980B9', label: 'Comando' },
+};
+
+// Alarme com código que o servidor ainda não conhece (data.known = false).
+const UNKNOWN_ALARM_APPEARANCE: EventAppearance = {
+    icon: 'help-outline',
+    color: '#7F8C8D',
+    label: 'Alarme desconhecido',
 };
 
 const DEFAULT_APPEARANCE: EventAppearance = {
@@ -32,8 +44,12 @@ const DEFAULT_APPEARANCE: EventAppearance = {
 };
 
 export function eventAppearance(
-    event: Pick<ApiTrackerEvent, 'type'>
+    event: Pick<ApiTrackerEvent, 'type'> & { data?: ApiTrackerEvent['data'] }
 ): EventAppearance {
+    if (event.type === 'ALARM' && event.data?.known === false) {
+        return UNKNOWN_ALARM_APPEARANCE;
+    }
+
     return EVENT_APPEARANCE[event.type] ?? DEFAULT_APPEARANCE;
 }
 
@@ -98,6 +114,14 @@ export type StatusChip = {
     tone: 'ok' | 'warn' | 'danger' | 'neutral';
 };
 
+/** Cores de cada tom (texto, fundo claro, fundo escuro). */
+export const STATUS_TONE_COLORS: Record<StatusChip['tone'], { fg: string; bg: string; darkBg: string }> = {
+    ok: { fg: '#2E8B57', bg: '#E8F5EE', darkBg: '#1E3A2C' },
+    warn: { fg: '#C77700', bg: '#FFF4E0', darkBg: '#3D2F14' },
+    danger: { fg: '#C0392B', bg: '#FDECEA', darkBg: '#40201D' },
+    neutral: { fg: '#6B7280', bg: '#F1F3F5', darkBg: '#2A3240' },
+};
+
 /**
  * Itens do painel de status de um rastreador (cards da Home).
  */
@@ -147,9 +171,23 @@ export function buildStatusChips(
         });
     }
 
+    // Bateria: com a leitura do STATUS# (volts/%), mostra ela; senão, o
+    // nível 0-6 do heartbeat.
     const battery = voltageLabel(status.voltageLevel);
 
-    if (battery) {
+    if (typeof status.batteryPercent === 'number') {
+        chips.push({
+            key: 'battery',
+            icon: batteryIcon(status.batteryPercent),
+            label: `Bateria ${status.batteryPercent}%`,
+            tone:
+                status.batteryPercent <= 20
+                    ? 'danger'
+                    : status.batteryPercent <= 40
+                        ? 'warn'
+                        : 'ok',
+        });
+    } else if (battery) {
         chips.push({
             key: 'battery',
             icon: 'battery-std',
@@ -174,6 +212,15 @@ export function buildStatusChips(
         });
     }
 
+    if (typeof status.externalVoltage === 'number') {
+        chips.push({
+            key: 'vehicle',
+            icon: 'electric-car',
+            label: `Veículo ${formatVolts(status.externalVoltage)}`,
+            tone: status.externalVoltage < 11.5 ? 'warn' : 'ok',
+        });
+    }
+
     if (typeof satellites === 'number') {
         chips.push({
             key: 'sat',
@@ -184,4 +231,220 @@ export function buildStatusChips(
     }
 
     return chips;
+}
+
+function batteryIcon(percent: number): string {
+    if (percent >= 90) return 'battery-full';
+    if (percent >= 60) return 'battery-5-bar';
+    if (percent >= 40) return 'battery-3-bar';
+    if (percent >= 20) return 'battery-2-bar';
+    return 'battery-alert';
+}
+
+/** 4.05 -> "4,05 V" */
+export function formatVolts(value: number): string {
+    return `${value.toFixed(2).replace('.', ',')} V`;
+}
+
+// ============================================================
+// DETALHES DO APARELHO
+// ============================================================
+
+export type DeviceDetailRow = {
+    key: string;
+    label: string;
+    value: string;
+    hint?: string;
+    tone?: StatusChip['tone'];
+};
+
+export type DeviceDetailSection = {
+    key: string;
+    title: string;
+    rows: DeviceDetailRow[];
+};
+
+const SIGNAL_TEXT: Record<string, string> = {
+    strong: 'Forte',
+    good: 'Bom',
+    normal: 'Normal',
+    medium: 'Médio',
+    weak: 'Fraco',
+    none: 'Sem sinal',
+};
+
+function alarmValue(config?: ApiDeviceAlarmConfig, extra?: string): string | null {
+    if (!config) {
+        return null;
+    }
+
+    if (!config.ligado) {
+        return 'Desligado';
+    }
+
+    return ['Ligado', extra].filter(Boolean).join(' · ');
+}
+
+function alarmMode(config?: ApiDeviceAlarmConfig): string | undefined {
+    if (!config?.ligado) {
+        return undefined;
+    }
+
+    if (config.modoTexto) {
+        return config.modoTexto;
+    }
+
+    if (typeof config.modo === 'number') {
+        return ['só GPRS', 'SMS + GPRS', 'GPRS + SMS + ligação', 'todos'][config.modo];
+    }
+
+    return undefined;
+}
+
+/**
+ * Detalhes do aparelho, por seção, para o painel expandido do card.
+ * Só entra o que o servidor já conhece (linhas sem dado ficam de fora).
+ */
+export function buildDeviceDetails(
+    status: ApiDeviceStatus | undefined,
+    config: ApiDeviceConfig | undefined
+): DeviceDetailSection[] {
+    const s = status ?? {};
+    const c = config ?? {};
+
+    const energy: DeviceDetailRow[] = [];
+
+    if (typeof s.batteryVolts === 'number') {
+        energy.push({
+            key: 'battery',
+            label: 'Bateria interna',
+            value: `${s.batteryPercent ?? '—'}% · ${formatVolts(s.batteryVolts)}`,
+            hint: s.batteryUpdatedAt ? `lida ${formatTimeAgo(s.batteryUpdatedAt)}` : undefined,
+            tone: (s.batteryPercent ?? 100) <= 20 ? 'danger' : (s.batteryPercent ?? 100) <= 40 ? 'warn' : 'ok',
+        });
+    } else if (voltageLabel(s.voltageLevel)) {
+        energy.push({
+            key: 'battery',
+            label: 'Bateria interna',
+            value: voltageLabel(s.voltageLevel) as string,
+            hint: `nível ${s.voltageLevel}/6`,
+        });
+    }
+
+    if (typeof s.externalVoltage === 'number') {
+        energy.push({
+            key: 'vehicle',
+            label: 'Bateria do veículo',
+            value: formatVolts(s.externalVoltage),
+            tone: s.externalVoltage < 11.5 ? 'warn' : 'ok',
+        });
+    }
+
+    if (typeof s.externalPower === 'boolean') {
+        energy.push({
+            key: 'power',
+            label: 'Alimentação externa',
+            value: s.externalPower ? 'Conectada' : 'Desconectada',
+            hint: !s.externalPower && s.batteryOnly ? 'o aparelho informa "só bateria"' : undefined,
+            tone: s.externalPower ? 'ok' : 'danger',
+        });
+    }
+
+    const signal: DeviceDetailRow[] = [];
+
+    const gsmText =
+        (s.gsmSignalText && (SIGNAL_TEXT[s.gsmSignalText.toLowerCase()] ?? s.gsmSignalText)) ||
+        s.gsmText ||
+        gsmLabel(s.gsmLevel);
+
+    if (gsmText) {
+        signal.push({
+            key: 'gsm',
+            label: 'Sinal do celular',
+            value: gsmText,
+            hint: typeof s.gsmSignal === 'number' ? `CSQ ${s.gsmSignal}/31` : undefined,
+        });
+    }
+
+    if (typeof s.acc === 'boolean') {
+        signal.push({
+            key: 'acc',
+            label: 'Ignição (ACC)',
+            value: s.acc ? 'Ligada' : 'Desligada',
+        });
+    }
+
+    if (typeof s.relayCut === 'boolean' || c.rele) {
+        const cut = c.rele?.cortado ?? s.relayCut;
+
+        signal.push({
+            key: 'relay',
+            label: 'Bloqueio (relé)',
+            value: cut ? 'Cortado' : 'Normal',
+            tone: cut ? 'danger' : 'ok',
+        });
+    }
+
+    const device: DeviceDetailRow[] = [];
+
+    if (c.timer) {
+        device.push({
+            key: 'timer',
+            label: 'Envio do GPS',
+            value: `a cada ${c.timer.accOnSeg} s`,
+            hint:
+                c.timer.accOffSeg !== c.timer.accOnSeg
+                    ? `ignição desligada: ${c.timer.accOffSeg} s`
+                    : undefined,
+            tone: c.timer.accOffSeg > 60 ? 'warn' : undefined,
+        });
+    }
+
+    const rows: Array<[string, string, string | null, string | undefined, StatusChip['tone'] | undefined]> = [
+        ['vibration', 'Alarme de vibração', alarmValue(c.vibracao), alarmMode(c.vibracao), c.vibracao?.ligado === false ? 'warn' : undefined],
+        ['powercut', 'Alarme de corte de energia', alarmValue(c.corteEnergia), alarmMode(c.corteEnergia), undefined],
+        ['moving', 'Alarme de deslocamento', alarmValue(c.deslocamento, c.deslocamento?.raioM ? `${c.deslocamento.raioM} m` : undefined), undefined, undefined],
+        ['speed', 'Alarme de velocidade', alarmValue(c.excessoVelocidade, c.excessoVelocidade?.limiteKmh ? `${c.excessoVelocidade.limiteKmh} km/h` : undefined), undefined, undefined],
+        ['lowbat', 'Alarme de bateria baixa', alarmValue(c.bateriaBaixa), alarmMode(c.bateriaBaixa), undefined],
+    ];
+
+    rows.forEach(([key, label, value, hint, tone]) => {
+        if (value) {
+            device.push({ key, label, value, hint, tone });
+        }
+    });
+
+    if (c.telefones) {
+        const total = c.telefones.sos + c.telefones.center;
+
+        device.push({
+            key: 'phones',
+            label: 'Telefones SOS / central',
+            value: total ? `${c.telefones.sos} / ${c.telefones.center}` : 'Nenhum',
+            hint: total ? undefined : 'o aparelho não manda SMS nem liga',
+        });
+    }
+
+    if (c.fusoSms) {
+        device.push({
+            key: 'timezone',
+            label: 'Fuso horário',
+            value: c.fusoSms.minutos === -180 ? 'Brasília (GMT-3)' : c.fusoSms.texto,
+        });
+    }
+
+    const sections: DeviceDetailSection[] = [
+        { key: 'energy', title: 'Energia', rows: energy },
+        { key: 'signal', title: 'Sinal e estado', rows: signal },
+        { key: 'device', title: 'Configuração do aparelho', rows: device },
+    ];
+
+    return sections.filter(section => section.rows.length > 0);
+}
+
+/** "Lida do aparelho há 3 h" (ou null se o servidor nunca leu). */
+export function deviceConfigReadAt(config: ApiDeviceConfig | undefined): string | null {
+    return config?.lidoDoAparelhoEm
+        ? `Lida do aparelho ${formatTimeAgo(config.lidoDoAparelhoEm)}`
+        : null;
 }

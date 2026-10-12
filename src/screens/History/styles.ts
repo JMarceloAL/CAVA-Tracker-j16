@@ -138,6 +138,13 @@ export const styles = StyleSheet.create({
         overflow: 'hidden',
     },
 
+    dropdownListFloating: {
+        position: 'absolute',
+        marginTop: 0,
+        zIndex: 20,
+        elevation: 8,
+    },
+
     darkDropdownList: {
         backgroundColor: '#1B2430',
         borderColor: '#2D3745',
@@ -198,14 +205,18 @@ export const styles = StyleSheet.create({
         marginBottom: 12,
     },
 
+    // Ícone em cima do texto: com 4 abas lado a lado, ícone + texto na
+    // mesma linha não cabe ("Localizações" empurrava o ícone pra fora).
     tabButton: {
         flex: 1,
-        flexDirection: 'row',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: '#FFFFFF',
         borderRadius: 12,
-        paddingVertical: 10,
+        paddingVertical: 8,
+        paddingHorizontal: 4,
+        minHeight: 56,
         borderWidth: 1,
         borderColor: '#E6EAE0',
         shadowColor: '#000',
@@ -225,10 +236,11 @@ export const styles = StyleSheet.create({
     },
 
     tabButtonText: {
-        fontSize: 13,
+        fontSize: 12,
         fontWeight: '700',
         color: '#5F6F5C',
-        marginLeft: 6,
+        marginTop: 4,
+        textAlign: 'center',
     },
 
     darkTabButtonText: {
@@ -364,5 +376,90 @@ export const styles = StyleSheet.create({
 
     darkChevronIcon: {
         color: '#667384',
+    },
+
+    // ------------------------------------------------------------
+    // ABA "DIA" (trajeto do dia)
+    // ------------------------------------------------------------
+
+    dayNav: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 14,
+    },
+
+    dayNavButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 10,
+        borderWidth: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    dayNavButtonDisabled: {
+        opacity: 0.35,
+    },
+
+    dayNavLabelGroup: {
+        alignItems: 'center',
+    },
+
+    dayNavLabel: {
+        fontSize: 16,
+        fontWeight: '700',
+        textTransform: 'capitalize',
+    },
+
+    dayNavSub: {
+        fontSize: 12,
+        marginTop: 2,
+    },
+
+    dayStats: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+
+    dayStat: {
+        flex: 1,
+        borderWidth: 1,
+        borderRadius: 10,
+        paddingVertical: 10,
+        paddingHorizontal: 8,
+        alignItems: 'center',
+    },
+
+    dayStatValue: {
+        fontSize: 14,
+        fontWeight: '700',
+    },
+
+    dayStatLabel: {
+        fontSize: 11,
+        marginTop: 2,
+        textAlign: 'center',
+    },
+
+    dayNote: {
+        fontSize: 12,
+        lineHeight: 18,
+        marginTop: 12,
+    },
+
+    dayMapButton: {
+        height: 50,
+        borderRadius: 10,
+        marginTop: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+    },
+
+    dayMapButtonText: {
+        fontSize: 15,
+        fontWeight: '700',
     },
 });

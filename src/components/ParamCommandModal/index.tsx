@@ -4,6 +4,7 @@ import { View, Text, Modal, TextInput, TouchableOpacity, Alert } from 'react-nat
 
 import { styles } from './styles';
 import { useTheme } from '../../contexts/ThemeContext';
+import { PopIn } from '../Motion';
 
 
 export type Field = {
@@ -56,9 +57,9 @@ export default function ParamCommandModal({ visible, title, fields, onClose, onS
     const cancelTextStyle = [styles.cancelButtonText, isDark && styles.darkCancelButtonText];
 
     return (
-        <Modal visible={visible} transparent animationType="slide">
+        <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
             <View style={styles.overlay}>
-                <View style={containerStyle}>
+                <PopIn variant="sheet" style={containerStyle}>
                     <Text style={titleStyle}>{title}</Text>
 
                     {fields.map(field => (
@@ -80,7 +81,7 @@ export default function ParamCommandModal({ visible, title, fields, onClose, onS
                     <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
                         <Text style={cancelTextStyle}>Cancelar</Text>
                     </TouchableOpacity>
-                </View>
+                </PopIn>
             </View>
         </Modal>
     );

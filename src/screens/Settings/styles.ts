@@ -1,247 +1,171 @@
 import { StyleSheet } from 'react-native';
-import { APP_GREEN } from '../../theme/colors';
 
+// As cores vêm do tema (useTheme) na própria tela; aqui ficam só
+// medidas e tipografia.
 export const styles = StyleSheet.create({
     container: {
         flex: 1,
-        padding: 20,
-        backgroundColor: '#F5F7F2',
     },
-    darkContainer: {
-        backgroundColor: '#121821',
+    header: {
+        paddingHorizontal: 16,
+        paddingTop: 12,
     },
-    topBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 20,
+    scrollContent: {
+        paddingHorizontal: 16,
+        paddingBottom: 40,
     },
-    menuButton: {
-        marginRight: 12,
-        padding: 4,
+
+    // Seções
+    sectionTitle: {
+        fontSize: 12,
+        fontWeight: '700',
+        letterSpacing: 0.6,
+        textTransform: 'uppercase',
+        marginTop: 20,
+        marginBottom: 8,
+        marginLeft: 4,
     },
-    title: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: '#111',
+    card: {
+        borderRadius: 12,
+        borderWidth: 1,
+        paddingHorizontal: 14,
     },
-    darkText: {
-        color: '#F3F4F6',
+    divider: {
+        height: 1,
+        marginLeft: 50,
     },
+
+    // Linhas
     row: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: '#FFFFFF',
-        borderRadius: 14,
-        padding: 16,
-        marginBottom: 18,
-    },
-    darkRow: {
-        backgroundColor: '#1D2733',
-    },
-    themeGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'space-between',
-        gap: 10,
-    },
-    themeSelector: {
-        borderWidth: 1,
-        borderRadius: 12,
-        paddingHorizontal: 12,
+        minHeight: 56,
         paddingVertical: 10,
-        marginBottom: 12,
     },
-    darkThemeSelector: {
-        borderColor: '#334155',
-    },
-    themeSelectorMain: {
-        flexDirection: 'row',
+    rowIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'center',
+        marginRight: 14,
     },
-    themeHeaderLabel: {
-        fontSize: 16,
+    rowText: {
+        flex: 1,
+        marginRight: 8,
+    },
+    rowTitle: {
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    rowSubtitle: {
+        fontSize: 12,
+        marginTop: 2,
+    },
+    rowValue: {
+        fontSize: 14,
+        fontWeight: '600',
+        maxWidth: 160,
+    },
+    smallButton: {
+        borderWidth: 1,
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+    },
+    smallButtonText: {
+        fontSize: 13,
         fontWeight: '700',
     },
-    themeSelectorTextWrap: {
-        flex: 1,
-        marginLeft: 10,
+
+    // Versão
+    versionText: {
+        fontSize: 13,
+        marginTop: 4,
     },
+
+    // Temas
     themeMenu: {
-        borderWidth: 1,
-        borderRadius: 12,
-        paddingVertical: 6,
-        marginBottom: 12,
+        paddingBottom: 10,
     },
     themeMenuItem: {
         flexDirection: 'row',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: 'transparent',
         borderRadius: 10,
         paddingHorizontal: 12,
         paddingVertical: 10,
-        marginHorizontal: 8,
-        marginVertical: 4,
-    },
-    themeMenuItemTextWrap: {
-        flex: 1,
-        marginLeft: 8,
-    },
-    themeButton: {
-        width: '48%',
-        borderRadius: 14,
-        padding: 12,
-        backgroundColor: '#F7F9F5',
-        borderWidth: 1,
-        borderColor: '#EAEFE5',
-        marginBottom: 10,
-    },
-    darkThemeButton: {
-        backgroundColor: '#1D2733',
-        borderColor: '#334155',
-    },
-    themeButtonActive: {
-        borderColor: APP_GREEN,
-        backgroundColor: '#F4FAEE',
+        marginBottom: 8,
     },
     themePreviewRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        marginRight: 10,
     },
     themePreviewSwatch: {
-        width: 22,
-        height: 22,
-        borderRadius: 11,
-        marginRight: 6,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        marginRight: 4,
         borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.05)',
+        borderColor: 'rgba(0,0,0,0.08)',
     },
-    themeButtonText: {
+    themeName: {
         fontSize: 14,
         fontWeight: '700',
-        color: '#111827',
     },
-    themeButtonTextActive: {
-        color: APP_GREEN,
-    },
-    themeButtonDescription: {
-        fontSize: 11,
-        color: '#6B7280',
-        marginTop: 4,
-    },
-    themeButtonDescriptionActive: {
-        color: '#3B6A0E',
-    },
-    darkToggleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginTop: 12,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: '#EAEFE5',
-    },
-    label: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#111827',
-    },
-    darkLabel: {
-        color: '#F3F4F6',
-    },
-    help: {
-        fontSize: 12,
-        color: '#6B7280',
-        marginTop: 4,
-    },
-    darkHelp: {
-        color: '#AFB9C7',
-    },
-    section: {
-        marginTop: 8,
-    },
+
+    // Formulário de credenciais
     form: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 14,
-        padding: 16,
-        marginBottom: 18,
+        paddingBottom: 14,
     },
-    darkForm: {
-        backgroundColor: '#1D2733',
+    inputLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        marginBottom: 6,
     },
     input: {
+        height: 50,
         borderWidth: 1,
-        borderColor: '#E5E7EB',
         borderRadius: 10,
-        backgroundColor: '#F9FAFB',
-        paddingHorizontal: 12,
-        paddingVertical: 12,
-        color: '#111827',
+        paddingHorizontal: 14,
+        fontSize: 15,
         marginBottom: 12,
     },
-    darkInput: {
-        borderColor: '#334155',
-        backgroundColor: '#18212d',
-        color: '#F3F4F6',
-    },
-    button: {
-        backgroundColor: APP_GREEN,
-        borderRadius: 10,
-        paddingVertical: 12,
+    passwordWrap: {
+        flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 8,
     },
-    buttonText: {
-        color: '#FFFFFF',
-        fontWeight: '700',
+    passwordInput: {
+        flex: 1,
+        height: '100%',
+        fontSize: 15,
     },
-    secondaryButton: {
-        backgroundColor: '#E5E7EB',
+    primaryButton: {
+        height: 50,
         borderRadius: 10,
-        paddingVertical: 12,
         alignItems: 'center',
-        marginTop: 12,
+        justifyContent: 'center',
+        marginTop: 4,
     },
-    secondaryButtonText: {
-        color: '#111827',
-        fontWeight: '700',
+    primaryButtonText: {
+        fontSize: 16,
+        fontWeight: 'bold',
     },
-    dangerText: {
-        color: '#D16666',
-    },
-    infoButton: {
+
+    // Sair
+    logoutButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 8,
+        height: 50,
+        borderRadius: 10,
+        borderWidth: 1,
+        marginTop: 24,
     },
-    infoButtonText: {
-        color: '#111827',
-        fontWeight: '600',
-    },
-    darkInfoButtonText: {
-        color: '#F3F4F6',
-    },
-    dropdownHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    dropdownContent: {
-        marginTop: 16,
-    },
-    dangerButton: {
-        backgroundColor: '#D32F2F',
-        borderRadius: 8,
-        paddingVertical: 14,
-        alignItems: 'center',
-        marginTop: 12,
-    },
-    dangerButtonText: {
-        color: '#fff',
-        fontWeight: '600',
-        fontSize: 15,
+    logoutText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginLeft: 8,
     },
 });

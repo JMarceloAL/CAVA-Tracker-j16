@@ -10,6 +10,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useRealTime } from '../../contexts/RealTimeContext';
 import { useTrackerServiceProvider } from '../../contexts/TrackerServiceContext';
 import { APP_GREEN } from '../../theme/colors';
+import { ScreenFocusTransition } from '../../components/Motion';
 
 const Drawer = createDrawerNavigator();
 
@@ -26,7 +27,15 @@ export default function DrawerNavigator() {
     return (
         <Drawer.Navigator
             initialRouteName="Início"
+            // Cada tela entra com fade + leve subida ao ganhar foco.
+            screenLayout={({ children, navigation }) => (
+                <ScreenFocusTransition navigation={navigation}>
+                    {children}
+                </ScreenFocusTransition>
+            )}
             screenOptions={{
+                drawerType: 'front',
+                overlayColor: 'rgba(0, 0, 0, 0.35)',
                 headerShown: false,
                 drawerActiveTintColor: colors.primary,
                 drawerInactiveTintColor: isDark ? '#AFB9C7' : '#555',

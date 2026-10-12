@@ -5,6 +5,7 @@ import {
     TouchableOpacity,
     Switch,
     ActivityIndicator,
+    Text,
 } from 'react-native';
 
 import { Ionicons } from '@expo/vector-icons';
@@ -50,6 +51,16 @@ type Props = {
     checkingVigilante?: boolean;
 
     vigilanteDisabled?: boolean;
+
+    // ============================================================
+    // VIAGEM (Tempo real com o rastreador em movimento)
+    // ============================================================
+
+    /** Já formatados pela tela do mapa; null esconde a faixa. */
+    tripInfo?: {
+        speed: string;
+        distance: string;
+    } | null;
 };
 
 export default function MapControls({
@@ -67,6 +78,8 @@ export default function MapControls({
     onToggleVigilante,
     checkingVigilante = false,
     vigilanteDisabled = false,
+
+    tripInfo = null,
 }: Props) {
     const { colors } = useTheme();
 
@@ -155,6 +168,37 @@ export default function MapControls({
                     />
                 )}
             </View>
+
+            {/* ==================================================
+                VIAGEM: logo abaixo de Tempo real e Vigilante
+                ● Em movimento | 23 km/h | 230 m
+            ================================================== */}
+
+            {tripInfo && (
+                <View
+                    style={[
+                        styles.tripBar,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                    ]}
+                >
+                    <View style={[styles.tripDot, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.tripStatus, { color: colors.primary }]}>
+                        Em movimento
+                    </Text>
+
+                    <View style={[styles.tripDivider, { backgroundColor: colors.border }]} />
+
+                    <Text style={[styles.tripValue, { color: colors.text }]}>
+                        {tripInfo.speed}
+                    </Text>
+
+                    <View style={[styles.tripDivider, { backgroundColor: colors.border }]} />
+
+                    <Text style={[styles.tripValue, { color: colors.text }]}>
+                        {tripInfo.distance}
+                    </Text>
+                </View>
+            )}
 
             {/* ==================================================
                 HISTÓRICO

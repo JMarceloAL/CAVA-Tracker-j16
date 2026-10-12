@@ -327,49 +327,6 @@ export const styles = StyleSheet.create({
     },
 
     // ============================================================
-    // ROTA / VIAGEM
-    // ============================================================
-
-    kmOverlay: {
-        position: 'absolute',
-        top: 110,
-        right: 16,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 14,
-        paddingHorizontal: 14,
-        paddingVertical: 9,
-
-        elevation: 5,
-
-        shadowColor: '#000',
-        shadowOpacity: 0.14,
-        shadowRadius: 7,
-
-        shadowOffset: {
-            width: 0,
-            height: 3,
-        },
-
-        zIndex: 20,
-    },
-
-    kmOverlayDark: {
-        backgroundColor: '#1B2430',
-        borderWidth: 1,
-        borderColor: '#303A48',
-    },
-
-    kmText: {
-        fontSize: 15,
-        fontWeight: '700',
-        color: '#333333',
-    },
-
-    darkKmText: {
-        color: '#F3F4F6',
-    },
-
-    // ============================================================
     // STATUS DA VIAGEM
     // ============================================================
 

@@ -2,12 +2,8 @@ import { StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
     card: {
-        flexDirection: 'row',
-        alignItems: 'center',
         backgroundColor: '#FFFFFF',
         borderRadius: 18,
-        paddingVertical: 16,
-        paddingHorizontal: 14,
         marginBottom: 12,
         borderWidth: 1,
         borderColor: '#EAF0E5',
@@ -16,6 +12,12 @@ export const styles = StyleSheet.create({
         shadowRadius: 10,
         shadowOffset: { width: 0, height: 4 },
         elevation: 3,
+    },
+    cardRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 16,
+        paddingHorizontal: 14,
     },
     darkCard: {
         backgroundColor: '#1D2733',
@@ -121,5 +123,41 @@ export const styles = StyleSheet.create({
 
     chevron: {
         marginLeft: 2,
+    },
+
+    // Aba "Status do aparelho" (expande o card)
+    expandTab: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderTopWidth: StyleSheet.hairlineWidth,
+        paddingVertical: 8,
+    },
+    expandTabText: {
+        fontSize: 13,
+        fontWeight: '700',
+        marginRight: 2,
+    },
+    expandedContent: {
+        paddingHorizontal: 14,
+        paddingBottom: 14,
+    },
+    chipsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 4,
+        marginBottom: 10,
+    },
+    chip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 10,
+    },
+    chipText: {
+        fontSize: 10,
+        marginLeft: 3,
+        fontWeight: '600',
     },
 });

@@ -75,24 +75,32 @@ import { useTheme } from '../../contexts/ThemeContext';
 const STORAGE_KEY =
     '@cavalleta:trackers';
 
-function formatDistanceKm(value: number) {
-    const safeValue = Number.isFinite(value)
-        ? Math.max(0, value)
-        : 0;
+/** Velocidade do rastreador (km/h, como vem do servidor) arredondada. */
+function formatSpeedKmh(value: number | undefined) {
+    const speed = Number(value);
 
-    if (safeValue >= 100) {
-        return `${safeValue.toFixed(0)} km`;
+    return Number.isFinite(speed) ? Math.max(0, Math.round(speed)) : 0;
+}
+
+/**
+ * Distância da viagem para o painel do mapa: abaixo de 1 km em
+ * metros ("230 m"), acima em km com vírgula ("1,25 km").
+ */
+function formatTripDistance(valueKm: number): { value: string; unit: string } {
+    const km = Number.isFinite(valueKm) ? Math.max(0, valueKm) : 0;
+
+    const meters = Math.round(km * 1000);
+
+    if (meters < 1000) {
+        return { value: String(meters), unit: 'm' };
     }
 
-    if (safeValue >= 10) {
-        return `${safeValue.toFixed(1).replace(/\.0$/, '')} km`;
-    }
+    const decimals = km >= 100 ? 0 : km >= 10 ? 1 : 2;
 
-    if (safeValue >= 1) {
-        return `${safeValue.toFixed(2).replace(/\.?0+$/, '')} km`;
-    }
-
-    return `${safeValue.toFixed(3).replace(/\.?0+$/, '')} km`;
+    return {
+        value: km.toFixed(decimals).replace('.', ','),
+        unit: 'km',
+    };
 }
 
 function isSameTracker(
@@ -1203,6 +1211,9 @@ export default function MapScreen() {
                 ? routePoints
                 : [];
 
+    const tripDistance =
+        formatTripDistance(currentTripDistanceKm);
+
     // ============================================================
     // RENDER
     // ============================================================
@@ -1326,30 +1337,6 @@ export default function MapScreen() {
             />
 
             {/* ==================================================
-                DISTÂNCIA
-            ================================================== */}
-
-            {realTimeEnabled &&
-                !isHistoricalRoute &&
-                isMoving && (
-                    <View
-                        style={
-                            styles.kmOverlay
-                        }
-                    >
-                        <Text
-                            style={
-                                styles.kmText
-                            }
-                        >
-                            {formatDistanceKm(
-                                currentTripDistanceKm
-                            )}
-                        </Text>
-                    </View>
-                )}
-
-            {/* ==================================================
                 RECENTRALIZAR
             ================================================== */}
 
@@ -1407,6 +1394,17 @@ export default function MapScreen() {
 
                 onToggleVigilante={
                     handleToggleVigilante
+                }
+
+                tripInfo={
+                    realTimeEnabled &&
+                        !isHistoricalRoute &&
+                        isMoving
+                        ? {
+                            speed: `${formatSpeedKmh(latestLocation?.speed)} km/h`,
+                            distance: `${tripDistance.value} ${tripDistance.unit}`,
+                        }
+                        : null
                 }
 
                 checkingVigilante={

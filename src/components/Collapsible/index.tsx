@@ -1,7 +1,8 @@
 // src/components/Collapsible/index.tsx
 import React, { useState, useRef, useEffect } from 'react';
-import { Animated, View, LayoutChangeEvent, Easing } from 'react-native';
+import { Animated, View, LayoutChangeEvent } from 'react-native';
 
+import { DROPDOWN_CLOSE_MS, DROPDOWN_OPEN_MS, EASE_CLOSE, EASE_OPEN } from '../AnimatedDropdown';
 import { styles } from './styles';
 
 type Props = {
@@ -24,19 +25,22 @@ export default function Collapsible({ open, children }: Props) {
     useEffect(() => {
         if (measuredHeight === null) return;
 
-        const duration = 180;
+        // Altura um pouco mais longa que o dropdown (move mais
+        // conteúdo); a opacidade acompanha.
+        const duration = open ? DROPDOWN_OPEN_MS + 60 : DROPDOWN_CLOSE_MS + 40;
+        const easing = open ? EASE_OPEN : EASE_CLOSE;
 
         Animated.parallel([
             Animated.timing(heightAnim, {
                 toValue: open ? measuredHeight : 0,
                 duration,
-                easing: Easing.out(Easing.cubic),
+                easing,
                 useNativeDriver: false,
             }),
             Animated.timing(opacityAnim, {
                 toValue: open ? 1 : 0,
-                duration: open ? duration : duration - 40,
-                easing: Easing.out(Easing.cubic),
+                duration: open ? duration : duration * 0.6,
+                easing,
                 useNativeDriver: false,
             }),
         ]).start();

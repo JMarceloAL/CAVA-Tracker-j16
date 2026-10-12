@@ -300,197 +300,201 @@ export default function AlertsScreen() {
                 <ScreenHeader title="Alertas e cercas" />
             </View>
 
-            <TrackerDropdown
-                trackers={trackers}
-                selectedTracker={selectedTracker}
-                onSelect={selectTracker}
-            />
+            {/* O dropdown é absoluto: fica preso a esta área, abaixo do cabeçalho,
+                e o conteúdo reserva espaço para ele (paddingTop). */}
+            <View style={{ flex: 1 }}>
+                <TrackerDropdown
+                    trackers={trackers}
+                    selectedTracker={selectedTracker}
+                    onSelect={selectTracker}
+                />
 
-            <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-                {!selectedTracker ? (
-                    <Text style={helpStyle}>Cadastre ou selecione um rastreador.</Text>
-                ) : !imei ? (
-                    <Text style={helpStyle}>
-                        Este rastreador não tem IMEI cadastrado — os alertas dependem do servidor.
-                    </Text>
-                ) : loading ? (
-                    <ActivityIndicator style={{ marginTop: 24 }} color={colors.primary} />
-                ) : loadError || !form ? (
-                    <View style={{ alignItems: 'center', marginTop: 24 }}>
-                        <Text style={[helpStyle, { textAlign: 'center' }]}>
-                            {loadError ?? 'Não foi possível carregar os alertas.'}
+                <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 72, paddingBottom: 40 }}>
+                    {!selectedTracker ? (
+                        <Text style={helpStyle}>Cadastre ou selecione um rastreador.</Text>
+                    ) : !imei ? (
+                        <Text style={helpStyle}>
+                            Este rastreador não tem IMEI cadastrado — os alertas dependem do servidor.
                         </Text>
-                        <TouchableOpacity onPress={() => void load()} style={{ marginTop: 12 }}>
-                            <Text style={{ color: colors.primary, fontWeight: '700' }}>Tentar novamente</Text>
-                        </TouchableOpacity>
-                    </View>
-                ) : (
-                    <>
-                        {/* ============ ALERTAS ============ */}
-                        <View style={cardStyle}>
-                            <Text style={[labelStyle, { fontSize: 17, marginBottom: 4 }]}>Alertas</Text>
-                            <Text style={helpStyle}>
-                                Avaliados pelo servidor. Com o Modo Vigilante ligado, chegam como
-                                notificação; todos ficam no Histórico, aba Alertas.
+                    ) : loading ? (
+                        <ActivityIndicator style={{ marginTop: 24 }} color={colors.primary} />
+                    ) : loadError || !form ? (
+                        <View style={{ alignItems: 'center', marginTop: 24 }}>
+                            <Text style={[helpStyle, { textAlign: 'center' }]}>
+                                {loadError ?? 'Não foi possível carregar os alertas.'}
                             </Text>
-
-                            {renderToggle(
-                                'Excesso de velocidade',
-                                'Avisa quando passar do limite.',
-                                form.speedEnabled,
-                                value => update('speedEnabled', value),
-                                <>
-                                    <Text style={{ color: colors.text }}>Limite</Text>
-                                    <TextInput
-                                        style={inputStyle}
-                                        keyboardType="numeric"
-                                        value={form.speedLimit}
-                                        onChangeText={value => update('speedLimit', value.replace(/\D/g, ''))}
-                                        maxLength={3}
-                                    />
-                                    <Text style={{ color: colors.text }}>km/h</Text>
-                                </>
-                            )}
-
-                            {renderToggle(
-                                'Ignição fora de horário',
-                                'Avisa se a ignição for ligada dentro deste horário (horário de Brasília).',
-                                form.ignitionEnabled,
-                                value => update('ignitionEnabled', value),
-                                <>
-                                    <Text style={{ color: colors.text }}>Das</Text>
-                                    <TextInput
-                                        style={inputStyle}
-                                        value={form.ignitionStart}
-                                        onChangeText={value => update('ignitionStart', value)}
-                                        placeholder="22:00"
-                                        placeholderTextColor={colors.textMuted}
-                                        maxLength={5}
-                                    />
-                                    <Text style={{ color: colors.text }}>às</Text>
-                                    <TextInput
-                                        style={inputStyle}
-                                        value={form.ignitionEnd}
-                                        onChangeText={value => update('ignitionEnd', value)}
-                                        placeholder="06:00"
-                                        placeholderTextColor={colors.textMuted}
-                                        maxLength={5}
-                                    />
-                                </>
-                            )}
-
-                            {renderToggle(
-                                'Sem comunicação',
-                                'Avisa se o rastreador ficar sem enviar dados.',
-                                form.offlineEnabled,
-                                value => update('offlineEnabled', value),
-                                <>
-                                    <Text style={{ color: colors.text }}>Após</Text>
-                                    <TextInput
-                                        style={inputStyle}
-                                        keyboardType="numeric"
-                                        value={form.offlineMinutes}
-                                        onChangeText={value => update('offlineMinutes', value.replace(/\D/g, ''))}
-                                        maxLength={4}
-                                    />
-                                    <Text style={{ color: colors.text }}>minutos</Text>
-                                </>
-                            )}
-
-                            {renderToggle(
-                                'Corte de alimentação',
-                                'Avisa se o rastreador for desligado da bateria do veículo (sinal comum de furto).',
-                                form.powerCutEnabled,
-                                value => update('powerCutEnabled', value)
-                            )}
-
-                            <TouchableOpacity
-                                onPress={handleSaveSettings}
-                                disabled={saving}
-                                style={{
-                                    backgroundColor: colors.primary,
-                                    borderRadius: 10,
-                                    paddingVertical: 12,
-                                    alignItems: 'center',
-                                    marginTop: 14,
-                                }}
-                            >
-                                {saving ? (
-                                    <ActivityIndicator color="#FFF" />
-                                ) : (
-                                    <Text style={{ color: '#FFF', fontWeight: '700' }}>Salvar alertas</Text>
-                                )}
+                            <TouchableOpacity onPress={() => void load()} style={{ marginTop: 12 }}>
+                                <Text style={{ color: colors.primary, fontWeight: '700' }}>Tentar novamente</Text>
                             </TouchableOpacity>
                         </View>
+                    ) : (
+                        <>
+                            {/* ============ ALERTAS ============ */}
+                            <View style={cardStyle}>
+                                <Text style={[labelStyle, { fontSize: 17, marginBottom: 4 }]}>Alertas</Text>
+                                <Text style={helpStyle}>
+                                    Avaliados pelo servidor. Com o Modo Vigilante ligado, chegam como
+                                    notificação; todos ficam no Histórico, aba Alertas.
+                                </Text>
 
-                        {/* ============ CERCAS ============ */}
-                        <View style={cardStyle}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <Text style={[labelStyle, { fontSize: 17 }]}>Cercas virtuais</Text>
+                                {renderToggle(
+                                    'Excesso de velocidade',
+                                    'Avisa quando passar do limite.',
+                                    form.speedEnabled,
+                                    value => update('speedEnabled', value),
+                                    <>
+                                        <Text style={{ color: colors.text }}>Limite</Text>
+                                        <TextInput
+                                            style={inputStyle}
+                                            keyboardType="numeric"
+                                            value={form.speedLimit}
+                                            onChangeText={value => update('speedLimit', value.replace(/\D/g, ''))}
+                                            maxLength={3}
+                                        />
+                                        <Text style={{ color: colors.text }}>km/h</Text>
+                                    </>
+                                )}
+
+                                {renderToggle(
+                                    'Ignição fora de horário',
+                                    'Avisa se a ignição for ligada dentro deste horário (horário de Brasília).',
+                                    form.ignitionEnabled,
+                                    value => update('ignitionEnabled', value),
+                                    <>
+                                        <Text style={{ color: colors.text }}>Das</Text>
+                                        <TextInput
+                                            style={inputStyle}
+                                            value={form.ignitionStart}
+                                            onChangeText={value => update('ignitionStart', value)}
+                                            placeholder="22:00"
+                                            placeholderTextColor={colors.textMuted}
+                                            maxLength={5}
+                                        />
+                                        <Text style={{ color: colors.text }}>às</Text>
+                                        <TextInput
+                                            style={inputStyle}
+                                            value={form.ignitionEnd}
+                                            onChangeText={value => update('ignitionEnd', value)}
+                                            placeholder="06:00"
+                                            placeholderTextColor={colors.textMuted}
+                                            maxLength={5}
+                                        />
+                                    </>
+                                )}
+
+                                {renderToggle(
+                                    'Sem comunicação',
+                                    'Avisa se o rastreador ficar sem enviar dados.',
+                                    form.offlineEnabled,
+                                    value => update('offlineEnabled', value),
+                                    <>
+                                        <Text style={{ color: colors.text }}>Após</Text>
+                                        <TextInput
+                                            style={inputStyle}
+                                            keyboardType="numeric"
+                                            value={form.offlineMinutes}
+                                            onChangeText={value => update('offlineMinutes', value.replace(/\D/g, ''))}
+                                            maxLength={4}
+                                        />
+                                        <Text style={{ color: colors.text }}>minutos</Text>
+                                    </>
+                                )}
+
+                                {renderToggle(
+                                    'Corte de alimentação',
+                                    'Avisa se o rastreador for desligado da bateria do veículo (sinal comum de furto).',
+                                    form.powerCutEnabled,
+                                    value => update('powerCutEnabled', value)
+                                )}
 
                                 <TouchableOpacity
-                                    onPress={() => void openNewFence()}
+                                    onPress={handleSaveSettings}
+                                    disabled={saving}
                                     style={{
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
                                         backgroundColor: colors.primary,
-                                        borderRadius: 16,
-                                        paddingHorizontal: 12,
-                                        paddingVertical: 6,
+                                        borderRadius: 10,
+                                        paddingVertical: 12,
+                                        alignItems: 'center',
+                                        marginTop: 14,
                                     }}
                                 >
-                                    <MaterialIcons name="add" size={16} color="#FFF" />
-                                    <Text style={{ color: '#FFF', fontWeight: '700', marginLeft: 4 }}>Nova</Text>
+                                    {saving ? (
+                                        <ActivityIndicator color="#FFF" />
+                                    ) : (
+                                        <Text style={{ color: '#FFF', fontWeight: '700' }}>Salvar alertas</Text>
+                                    )}
                                 </TouchableOpacity>
                             </View>
 
-                            <Text style={[helpStyle, { marginBottom: 8 }]}>
-                                Áreas no mapa (ex: casa, trabalho). Você é avisado quando o veículo entra ou sai.
-                            </Text>
+                            {/* ============ CERCAS ============ */}
+                            <View style={cardStyle}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <Text style={[labelStyle, { fontSize: 17 }]}>Cercas virtuais</Text>
 
-                            {geofences.length === 0 ? (
-                                <Text style={[helpStyle, { marginTop: 8 }]}>Nenhuma cerca criada.</Text>
-                            ) : (
-                                geofences.map(fence => (
-                                    <View
-                                        key={fence.id}
+                                    <TouchableOpacity
+                                        onPress={() => void openNewFence()}
                                         style={{
                                             flexDirection: 'row',
                                             alignItems: 'center',
-                                            paddingVertical: 10,
-                                            borderTopWidth: 1,
-                                            borderTopColor: colors.border,
+                                            backgroundColor: colors.primary,
+                                            borderRadius: 16,
+                                            paddingHorizontal: 12,
+                                            paddingVertical: 6,
                                         }}
                                     >
-                                        <MaterialIcons name="radio-button-checked" size={20} color={colors.primary} />
+                                        <MaterialIcons name="add" size={16} color="#FFF" />
+                                        <Text style={{ color: '#FFF', fontWeight: '700', marginLeft: 4 }}>Nova</Text>
+                                    </TouchableOpacity>
+                                </View>
 
-                                        <TouchableOpacity
-                                            style={{ flex: 1, marginLeft: 10 }}
-                                            onPress={() => openEditFence(fence)}
+                                <Text style={[helpStyle, { marginBottom: 8 }]}>
+                                    Áreas no mapa (ex: casa, trabalho). Você é avisado quando o veículo entra ou sai.
+                                </Text>
+
+                                {geofences.length === 0 ? (
+                                    <Text style={[helpStyle, { marginTop: 8 }]}>Nenhuma cerca criada.</Text>
+                                ) : (
+                                    geofences.map(fence => (
+                                        <View
+                                            key={fence.id}
+                                            style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                paddingVertical: 10,
+                                                borderTopWidth: 1,
+                                                borderTopColor: colors.border,
+                                            }}
                                         >
-                                            <Text style={labelStyle}>{fence.name}</Text>
-                                            <Text style={helpStyle}>
-                                                Raio {fence.radiusMeters >= 1000
-                                                    ? `${fence.radiusMeters / 1000} km`
-                                                    : `${fence.radiusMeters} m`}
-                                                {' · '}
-                                                {[
-                                                    fence.notifyEnter ? 'entrada' : null,
-                                                    fence.notifyExit ? 'saída' : null,
-                                                ].filter(Boolean).join(' e ')}
-                                            </Text>
-                                        </TouchableOpacity>
+                                            <MaterialIcons name="radio-button-checked" size={20} color={colors.primary} />
 
-                                        <TouchableOpacity onPress={() => handleDeleteFence(fence)} style={{ padding: 6 }}>
-                                            <MaterialIcons name="delete-outline" size={20} color="#D95C5C" />
-                                        </TouchableOpacity>
-                                    </View>
-                                ))
-                            )}
-                        </View>
-                    </>
-                )}
-            </ScrollView>
+                                            <TouchableOpacity
+                                                style={{ flex: 1, marginLeft: 10 }}
+                                                onPress={() => openEditFence(fence)}
+                                            >
+                                                <Text style={labelStyle}>{fence.name}</Text>
+                                                <Text style={helpStyle}>
+                                                    Raio {fence.radiusMeters >= 1000
+                                                        ? `${fence.radiusMeters / 1000} km`
+                                                        : `${fence.radiusMeters} m`}
+                                                    {' · '}
+                                                    {[
+                                                        fence.notifyEnter ? 'entrada' : null,
+                                                        fence.notifyExit ? 'saída' : null,
+                                                    ].filter(Boolean).join(' e ')}
+                                                </Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity onPress={() => handleDeleteFence(fence)} style={{ padding: 6 }}>
+                                                <MaterialIcons name="delete-outline" size={20} color="#D95C5C" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    ))
+                                )}
+                            </View>
+                        </>
+                    )}
+                </ScrollView>
+            </View>
 
             <GeofenceEditorModal
                 visible={editorVisible}

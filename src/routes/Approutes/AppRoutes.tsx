@@ -1,9 +1,6 @@
 // src/routes/AppRoutes.tsx
 
-// Importa os Hooks do React.
-import React, {
-    useState,
-} from 'react';
+import React from 'react';
 
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -13,8 +10,6 @@ import { NavigationContainer } from '@react-navigation/native';
 
 // Navegação em pilha.
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-
-import ScreenTransitionOverlay from '../../components/ScreenTransitionOverlay';
 
 // Telas.
 import Login from '../../screens/Login';
@@ -26,9 +21,6 @@ const Stack = createNativeStackNavigator();
 
 export default function AppRoutes() {
 
-    // Controla o overlay de transição entre telas.
-    const [transitioning, setTransitioning] = useState(false);
-
     const { isReady } = useTheme();
 
     if (!isReady) {
@@ -39,18 +31,9 @@ export default function AppRoutes() {
         );
     }
 
-    /*
-        Chamado pelo NavigationContainer toda vez que o estado
-        de navegação muda (troca de tela em qualquer nível).
-    */
-    function handleNavigationStateChange() {
-        setTransitioning(true);
-        setTimeout(() => setTransitioning(false), 300);
-    }
-
     return (
 
-        <NavigationContainer onStateChange={handleNavigationStateChange}>
+        <NavigationContainer>
 
             <Stack.Navigator
                 initialRouteName="Login"
@@ -58,7 +41,9 @@ export default function AppRoutes() {
                     headerShown: false,
                     gestureEnabled: true,
                     fullScreenGestureEnabled: true,
-                    animation: 'slide_from_right',
+                    // Login <-> app é troca de contexto: fade suave em
+                    // vez de deslizar a tela inteira.
+                    animation: 'fade',
                     animationTypeForReplace: 'push',
                 }}
             >
@@ -74,8 +59,6 @@ export default function AppRoutes() {
                 />
 
             </Stack.Navigator>
-
-            <ScreenTransitionOverlay visible={transitioning} />
 
         </NavigationContainer>
 
